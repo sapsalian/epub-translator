@@ -1,0 +1,8 @@
+pyproject.toml
+src/epub_translate.egg-info/PKG-INFO
+src/epub_translate.egg-info/SOURCES.txt
+src/epub_translate.egg-info/dependency_links.txt
+src/epub_translate.egg-info/top_level.txt
+src/epub_walker/__init__.py
+src/epub_walker/parser.py
+src/epub_walker/types.py
