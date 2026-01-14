@@ -197,7 +197,13 @@ def extract_all_texts_from_xhtml(xhtml) -> str:
 
     return "".join(final_deque)
 
-def print_all_texts_with_xhtml_name(epub_path: Path) -> None:
+
+from typing import Callable
+from typing import IO
+
+XhtmlProcessorFunc = Callable[[IO[bytes]], None]
+
+def walk_xhtmls(epub_path: Path, xhtml_func) -> None:
     """
     Prints all extracted texts along with their corresponding xhtml file names.
 
@@ -207,10 +213,10 @@ def print_all_texts_with_xhtml_name(epub_path: Path) -> None:
     
     with ZipFile(epub_path, "r") as zf:
         ordered_xhtml_paths = get_spine_xhtml_paths_by_order(zf)
-        for path in ordered_xhtml_paths[3:4]:
+        for path in ordered_xhtml_paths:
             with zf.open(path.as_posix()) as xhtml_file:
-                print(extract_all_texts_from_xhtml(xhtml_file))
+                xhtml_func(xhtml_file)
                     
-print_all_texts_with_xhtml_name(Path("demo_files/sample.epub"))
+walk_xhtmls(Path("demo_files/sample.epub"), lambda xhtml: print(extract_all_texts_from_xhtml(xhtml)))
     
 
