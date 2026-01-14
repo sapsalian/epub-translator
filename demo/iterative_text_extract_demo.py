@@ -114,8 +114,8 @@ def extract_all_texts_from_xhtml(xhtml) -> str:
 
     return "".join(final_deque)
 
-from epub_walker import walk_xhtmls
+from epub_walker import walk_ordered_xhtmls
 
-walk_xhtmls(Path("demo_files/sample.epub"), lambda xhtml: print(extract_all_texts_from_xhtml(xhtml)))
+walk_ordered_xhtmls(Path("demo_files/sample.epub"), lambda xhtml: print(extract_all_texts_from_xhtml(xhtml)))
     
 

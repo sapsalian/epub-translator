@@ -3,9 +3,9 @@ from zipfile import ZipFile
 
 from .parser import get_spine_xhtml_paths_by_order
 
-__all__ = ["walk_xhtmls"]
+__all__ = ["walk_ordered_xhtmls"]
 
-def walk_xhtmls(epub_path: Path, xhtml_func) -> None:
+def walk_ordered_xhtmls(epub_path: Path, xhtml_func) -> None:
     """
     Walks through all xhtml files in an EPUB file in spine order and applies a function to each.
 
