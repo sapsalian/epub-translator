@@ -1,17 +1,17 @@
 """
-Concrete element selector implementations.
+Concrete element matcher implementations.
 
-Each selector defines a different strategy for identifying elements
+Each matcher defines a different strategy for identifying elements
 that should be processed (e.g., translated) in XHTML content.
 """
 
 from lxml import etree
-from .base import ElementSelector
+from .base import ElementMatcher
 
 
-class TargetTagSelector(ElementSelector):
+class TargetTagMatcher(ElementMatcher):
     """
-    Select elements by tag name, excluding those nested under same target tags.
+    Match elements by tag name, excluding those nested under same target tags.
 
     Useful for block-level elements like paragraphs and headings where
     nested duplicates should be avoided.
@@ -26,11 +26,11 @@ class TargetTagSelector(ElementSelector):
     def __init__(self, target_tags: set[str] | None = None):
         """
         Args:
-            target_tags: Set of tag names to select. Uses DEFAULT_TAGS if None.
+            target_tags: Set of tag names to match. Uses DEFAULT_TAGS if None.
         """
         self.target_tags = target_tags or self.DEFAULT_TAGS
 
-    def select(self, elem: etree._Element) -> bool:
+    def match(self, elem: etree._Element) -> bool:
         tag_name = etree.QName(elem).localname
         if tag_name not in self.target_tags:
             return False
@@ -44,15 +44,15 @@ class TargetTagSelector(ElementSelector):
         return False
 
 
-class TextEmergenceSelector(ElementSelector):
+class TextEmergenceMatcher(ElementMatcher):
     """
-    Select elements where text content directly emerges.
+    Match elements where text content directly emerges.
 
-    An element is selected if it has non-empty elem.text or any child has
+    An element matches if it has non-empty elem.text or any child has
     non-empty tail text. This captures elements where visible text appears.
     """
 
-    def select(self, elem: etree._Element) -> bool:
+    def match(self, elem: etree._Element) -> bool:
         if elem.text and elem.text.strip():
             return True
         for child in elem:
@@ -61,12 +61,12 @@ class TextEmergenceSelector(ElementSelector):
         return False
 
 
-class PhrasingContentSelector(ElementSelector):
+class PhrasingContentMatcher(ElementMatcher):
     """
-    Select elements whose children are all phrasing (inline) content.
+    Match elements whose children are all phrasing (inline) content.
 
     Phrasing content elements are inline-level elements like span, strong, em, etc.
-    This selector identifies "leaf" block elements that contain only inline content.
+    This matcher identifies "leaf" block elements that contain only inline content.
     """
 
     DEFAULT_PHRASING_TAGS = {
@@ -83,7 +83,7 @@ class PhrasingContentSelector(ElementSelector):
         """
         self.phrasing_tags = phrasing_tags or self.DEFAULT_PHRASING_TAGS
 
-    def select(self, elem: etree._Element) -> bool:
+    def match(self, elem: etree._Element) -> bool:
         for child in elem:
             child_tag = etree.QName(child).localname
             if child_tag not in self.phrasing_tags:
