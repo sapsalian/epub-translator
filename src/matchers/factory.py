@@ -20,7 +20,7 @@ class MatcherFactory:
     """Factory for creating ElementMatcher instances with caching."""
 
     _instances: dict[MatcherStrategy, ElementMatcher] = {}
-    _default_strategy: MatcherStrategy = MatcherStrategy.TEXT_EMERGENCE
+    _default_strategy: MatcherStrategy = MatcherStrategy.ALL_ELEMENTS
 
     @classmethod
     def create(cls, strategy: MatcherStrategy | None = None) -> ElementMatcher:
