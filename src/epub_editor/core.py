@@ -2,7 +2,7 @@ from lxml import etree
 from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_STORED, ZIP_DEFLATED
 from .base import ElemEditor, DOMEditor
-from matchers import ElementMatcher
+from matchers import ElementMatcher, MatcherFactory
 
 
 def edit_epub(old_epub: Path, new_epub: Path, xhtml_editor: DOMEditor) -> None:
@@ -41,7 +41,7 @@ def edit_epub(old_epub: Path, new_epub: Path, xhtml_editor: DOMEditor) -> None:
                 zout.writestr(item.filename, content, compress_type=ZIP_DEFLATED)
 
 
-def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, elem_filter: ElementMatcher=None) -> None:
+def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, elem_filter: ElementMatcher | None = None) -> None:
     """
     Create a new EPUB by applying an editor function to each XML element.
 
@@ -51,12 +51,15 @@ def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, 
     Args:
         old_epub: Path to the source EPUB file.
         new_epub: Path where the modified EPUB will be saved.
-        elem_editor: A callable that takes an lxml Element and modifies it in place.
+        elem_editor: An editor that modifies each element in place.
+        elem_filter: A matcher to filter elements. Defaults to TextEmergenceMatcher.
     """
+    if elem_filter is None:
+        elem_filter = MatcherFactory.create()
 
     def xhtml_editor(tree: etree._Element, item: ZipInfo) -> None:
         for elem in tree.iter():
-            if (elem_filter is None) or elem_filter(elem):
+            if elem_filter(elem):
                 elem_editor(elem, item)
 
     edit_epub(old_epub, new_epub, xhtml_editor)

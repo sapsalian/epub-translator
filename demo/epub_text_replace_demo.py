@@ -7,7 +7,6 @@ for text replacement. Each matcher implements a different strategy.
 
 from epub_editor import edit_epub_elements
 from epub_editor.base import ElemEditor
-from matchers import TargetTagMatcher, TextEmergenceMatcher, PhrasingContentMatcher, ElementMatcher
 from lxml import etree
 from zipfile import ZipInfo
 
@@ -25,6 +24,5 @@ class TextReplacer(ElemEditor):
         elem.text = f"[Translated: {text}]"
 
 
-# Example usage with different matchers
-matcher = TextEmergenceMatcher()
-edit_epub_elements('demo_files/sample.epub', 'demo_files/translated.epub', TextReplacer(), matcher)
+# Uses default matcher (TextEmergenceMatcher) when elem_filter is not specified
+edit_epub_elements('demo_files/sample.epub', 'demo_files/translated.epub', TextReplacer())

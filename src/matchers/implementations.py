@@ -9,7 +9,7 @@ from lxml import etree
 from .base import ElementMatcher
 
 
-class TargetTagMatcher(ElementMatcher):
+class OuterContextMatcher(ElementMatcher):
     """
     Match elements by tag name, excluding those nested under same target tags.
 
@@ -17,29 +17,22 @@ class TargetTagMatcher(ElementMatcher):
     nested duplicates should be avoided.
     """
 
-    DEFAULT_TAGS = {
+    TARGET_TAGS = frozenset({
         'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'li', 'blockquote', 'td', 'th', 'dt', 'dd',
         'caption', 'figcaption'
-    }
-
-    def __init__(self, target_tags: set[str] | None = None):
-        """
-        Args:
-            target_tags: Set of tag names to match. Uses DEFAULT_TAGS if None.
-        """
-        self.target_tags = target_tags or self.DEFAULT_TAGS
+    })
 
     def match(self, elem: etree._Element) -> bool:
         tag_name = etree.QName(elem).localname
-        if tag_name not in self.target_tags:
+        if tag_name not in self.TARGET_TAGS:
             return False
         return not self._has_target_ancestor(elem)
 
     def _has_target_ancestor(self, elem: etree._Element) -> bool:
         for ancestor in elem.iterancestors():
             ancestor_tag = etree.QName(ancestor).localname
-            if ancestor_tag in self.target_tags:
+            if ancestor_tag in self.TARGET_TAGS:
                 return True
         return False
 
@@ -61,7 +54,7 @@ class TextEmergenceMatcher(ElementMatcher):
         return False
 
 
-class PhrasingContentMatcher(ElementMatcher):
+class LeafBlockMatcher(ElementMatcher):
     """
     Match elements whose children are all phrasing (inline) content.
 
@@ -69,23 +62,16 @@ class PhrasingContentMatcher(ElementMatcher):
     This matcher identifies "leaf" block elements that contain only inline content.
     """
 
-    DEFAULT_PHRASING_TAGS = {
+    PHRASING_TAGS = frozenset({
         'span', 'strong', 'em', 'b', 'i', 'u', 's', 'small', 'mark',
         'cite', 'dfn', 'abbr', 'sub', 'sup', 'code', 'kbd', 'samp',
         'var', 'q', 'data', 'time', 'a', 'img', 'picture', 'map',
         'area', 'ruby', 'rt', 'rp', 'br', 'wbr'
-    }
-
-    def __init__(self, phrasing_tags: set[str] | None = None):
-        """
-        Args:
-            phrasing_tags: Set of phrasing content tag names. Uses DEFAULT_PHRASING_TAGS if None.
-        """
-        self.phrasing_tags = phrasing_tags or self.DEFAULT_PHRASING_TAGS
+    })
 
     def match(self, elem: etree._Element) -> bool:
         for child in elem:
             child_tag = etree.QName(child).localname
-            if child_tag not in self.phrasing_tags:
+            if child_tag not in self.PHRASING_TAGS:
                 return False
         return True
