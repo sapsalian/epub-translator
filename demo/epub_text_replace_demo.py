@@ -9,6 +9,7 @@ from epub_editor import edit_epub_elements
 from epub_editor.base import ElemEditor
 from lxml import etree
 from zipfile import ZipInfo
+from matchers import MatcherFactory, MatcherStrategy
 
 
 class TextReplacer(ElemEditor):
@@ -25,4 +26,4 @@ class TextReplacer(ElemEditor):
 
 
 # Uses default matcher (TextEmergenceMatcher) when elem_filter is not specified
-edit_epub_elements('demo_files/sample.epub', 'demo_files/translated.epub', TextReplacer())
+edit_epub_elements('demo_files/sample.epub', 'demo_files/translated.epub', TextReplacer(), MatcherFactory.create(MatcherStrategy.TEXT_EMERGENCE))

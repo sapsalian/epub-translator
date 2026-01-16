@@ -2,7 +2,7 @@ from lxml import etree
 from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_STORED, ZIP_DEFLATED
 from .base import ElemEditor, DOMEditor
-from matchers import ElementMatcher, MatcherFactory
+from matchers import ElementMatcher, MatcherFactory, MatcherStrategy
 
 
 def edit_epub(old_epub: Path, new_epub: Path, xhtml_editor: DOMEditor) -> None:
@@ -55,7 +55,7 @@ def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, 
         elem_filter: A matcher to filter elements. Defaults to TextEmergenceMatcher.
     """
     if elem_filter is None:
-        elem_filter = MatcherFactory.create()
+        elem_filter = MatcherFactory.create(MatcherStrategy.ALL_ELEMENTS)
 
     def xhtml_editor(tree: etree._Element, item: ZipInfo) -> None:
         for elem in tree.iter():
