@@ -2,6 +2,7 @@ from lxml import etree
 from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_STORED, ZIP_DEFLATED
 from .types import ElemEditor, DOMEditor
+from matchers import ElementMatcher
 
 
 def edit_epub(old_epub: Path, new_epub: Path, xhtml_editor: DOMEditor) -> None:
@@ -40,7 +41,7 @@ def edit_epub(old_epub: Path, new_epub: Path, xhtml_editor: DOMEditor) -> None:
                 zout.writestr(item.filename, content, compress_type=ZIP_DEFLATED)
 
 
-def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor) -> None:
+def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, matcher: ElementMatcher=None) -> None:
     """
     Create a new EPUB by applying an editor function to each XML element.
 
@@ -55,6 +56,7 @@ def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor) 
 
     def xhtml_editor(tree: etree._Element, item: ZipInfo) -> None:
         for elem in tree.iter():
-            elem_editor(elem)
+            if (matcher is None) or matcher(elem):
+                elem_editor(elem)
 
     edit_epub(old_epub, new_epub, xhtml_editor)
