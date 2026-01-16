@@ -13,6 +13,7 @@ class MatcherStrategy(Enum):
     TEXT_EMERGENCE = "text_emergence"
     OUTER_CONTEXT = "outer_context"
     LEAF_BLOCK = "leaf_block"
+    ALL_ELEMENTS = "all_elements"
 
 
 class MatcherFactory:
@@ -45,6 +46,7 @@ class MatcherFactory:
             TextEmergenceMatcher,
             OuterContextMatcher,
             LeafBlockMatcher,
+            AllElementsMatcher,
         )
 
         match strategy:
@@ -54,5 +56,7 @@ class MatcherFactory:
                 return OuterContextMatcher()
             case MatcherStrategy.LEAF_BLOCK:
                 return LeafBlockMatcher()
+            case MatcherStrategy.ALL_ELEMENTS:
+                return AllElementsMatcher()
             case _:
                 raise ValueError(f"Unknown strategy: {strategy}")

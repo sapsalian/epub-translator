@@ -75,3 +75,14 @@ class LeafBlockMatcher(ElementMatcher):
             if child_tag not in self.PHRASING_TAGS:
                 return False
         return True
+
+class AllElementsMatcher(ElementMatcher):
+    """
+    Match all elements unconditionally.
+
+    This matcher is useful when every element in the document
+    needs to be processed without any filtering.
+    """
+
+    def match(self, elem: etree._Element) -> bool:
+        return True
