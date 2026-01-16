@@ -57,6 +57,6 @@ def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, 
     def xhtml_editor(tree: etree._Element, item: ZipInfo) -> None:
         for elem in tree.iter():
             if (matcher is None) or matcher(elem):
-                elem_editor(elem)
+                elem_editor(elem, item)
 
     edit_epub(old_epub, new_epub, xhtml_editor)
