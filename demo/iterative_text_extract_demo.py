@@ -115,7 +115,17 @@ def extract_all_texts_from_xhtml(xhtml) -> str:
     return "".join(final_deque)
 
 from epub_walker import walk_ordered_xhtmls
+from epub_walker.base import XhtmlProcessor
+from typing import IO
 
-walk_ordered_xhtmls(Path("demo_files/sample.epub"), lambda xhtml: print(extract_all_texts_from_xhtml(xhtml)))
+
+class TextExtractPrinter(XhtmlProcessor):
+    """Processor that extracts and prints text from each XHTML file."""
+
+    def process_xhtml(self, xhtml_file: IO[bytes]) -> None:
+        print(extract_all_texts_from_xhtml(xhtml_file))
+
+
+walk_ordered_xhtmls(Path("demo_files/sample.epub"), TextExtractPrinter())
     
 

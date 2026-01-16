@@ -1,7 +1,7 @@
 from lxml import etree
 from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_STORED, ZIP_DEFLATED
-from .types import ElemEditor, DOMEditor
+from .base import ElemEditor, DOMEditor
 from matchers import ElementMatcher
 
 
