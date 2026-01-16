@@ -1,8 +1,15 @@
 pyproject.toml
+src/epub_editor/__init__.py
+src/epub_editor/core.py
+src/epub_editor/types.py
 src/epub_translate.egg-info/PKG-INFO
 src/epub_translate.egg-info/SOURCES.txt
 src/epub_translate.egg-info/dependency_links.txt
 src/epub_translate.egg-info/top_level.txt
 src/epub_walker/__init__.py
+src/epub_walker/core.py
 src/epub_walker/parser.py
 src/epub_walker/types.py
+src/matchers/__init__.py
+src/matchers/base.py
+src/matchers/implementations.py
