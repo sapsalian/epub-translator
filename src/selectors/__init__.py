@@ -9,9 +9,11 @@ from .implementations import (
     TextEmergenceSelector,
     PhrasingContentSelector,
 )
+from .base import ElementSelector
 
 __all__ = [
     "TargetTagSelector",
     "TextEmergenceSelector",
     "PhrasingContentSelector",
+    "ElementSelector",
 ]

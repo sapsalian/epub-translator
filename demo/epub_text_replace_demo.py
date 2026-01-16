@@ -6,12 +6,12 @@ for text replacement. Each selector implements a different strategy.
 """
 
 from epub_editor import edit_epub
-from selectors import TargetTagSelector, TextEmergenceSelector, PhrasingContentSelector
+from selectors import TargetTagSelector, TextEmergenceSelector, PhrasingContentSelector, ElementSelector
 from lxml import etree
 from zipfile import ZipInfo
 
 
-def create_text_replacer(selector):
+def create_text_replacer(selector: ElementSelector):
     """
     Create a DOM editor function that uses the given selector.
 
