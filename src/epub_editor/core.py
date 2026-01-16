@@ -41,7 +41,7 @@ def edit_epub(old_epub: Path, new_epub: Path, xhtml_editor: DOMEditor) -> None:
                 zout.writestr(item.filename, content, compress_type=ZIP_DEFLATED)
 
 
-def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, matcher: ElementMatcher=None) -> None:
+def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, elem_filter: ElementMatcher=None) -> None:
     """
     Create a new EPUB by applying an editor function to each XML element.
 
@@ -56,7 +56,7 @@ def edit_epub_elements(old_epub: Path, new_epub: Path, elem_editor: ElemEditor, 
 
     def xhtml_editor(tree: etree._Element, item: ZipInfo) -> None:
         for elem in tree.iter():
-            if (matcher is None) or matcher(elem):
+            if (elem_filter is None) or elem_filter(elem):
                 elem_editor(elem, item)
 
     edit_epub(old_epub, new_epub, xhtml_editor)
