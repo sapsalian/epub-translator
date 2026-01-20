@@ -27,18 +27,23 @@ class MatcherFactory:
         """
         Create or return a cached matcher instance.
 
+        The matcher is reset before being returned to ensure clean state.
+
         Args:
-            strategy: The matcher strategy to use. Defaults to TEXT_EMERGENCE.
+            strategy: The matcher strategy to use. Defaults to ALL_ELEMENTS.
 
         Returns:
-            An ElementMatcher instance.
+            An ElementMatcher instance with reset state.
         """
         if strategy is None:
             strategy = cls._default_strategy
 
         if strategy not in cls._instances:
             cls._instances[strategy] = cls._build(strategy)
-        return cls._instances[strategy]
+
+        matcher = cls._instances[strategy]
+        matcher.reset()
+        return matcher
 
     @classmethod
     def _build(cls, strategy: MatcherStrategy) -> ElementMatcher:

@@ -28,6 +28,15 @@ class ElementMatcher(ABC):
         """
         pass
 
+    @abstractmethod
+    def reset(self) -> None:
+        """
+        Reset internal state for processing a new document.
+
+        Subclasses should clear any cached data here.
+        """
+        pass
+
     def __call__(self, elem: etree._Element) -> bool:
         """Allow matcher to be used as a callable."""
         return self.match(elem)
