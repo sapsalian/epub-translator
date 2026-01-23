@@ -157,6 +157,9 @@ class PreprocessResult(BaseModel):
     summaries: dict[str, str] = Field(
         default_factory=dict, description="xhtml_id -> summary mapping"
     )
+    epub_summary: str = Field(
+        default="", description="Overall EPUB summary for context"
+    )
 
     def to_json(self) -> str:
         """Serialize to JSON string."""

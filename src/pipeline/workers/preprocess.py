@@ -7,12 +7,15 @@ This prepares context for the translation phase.
 Input: PreprocessInput (extraction_result, target_language)
 Output: PreprocessResult
 
-This is an IO-bound worker that:
-1. Chunks raw text from each XHTML
-2. Extracts summary + terms from each chunk in a single API call
-3. Merges chunk results into final summary + term dictionary
+This is an IO-bound worker that uses parallel processing:
+1. All XHTMLs are processed in parallel
+2. Within each XHTML, all chunks are processed in parallel
+3. Chunk results are merged per-XHTML (summary + terms)
+4. XHTML term results are merged into final EPUB term dictionary
+5. Summaries are kept per-XHTML for translation context
 """
 
+import asyncio
 import logging
 from typing import Protocol
 
@@ -157,6 +160,12 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         """
         Generate term dictionary and summaries.
 
+        Uses parallel processing:
+        1. All XHTMLs processed in parallel
+        2. Within each XHTML, all chunks processed in parallel
+        3. XHTML term results merged into final EPUB term dictionary
+        4. Summaries kept per-XHTML
+
         Args:
             input_data: Preprocess input with extraction result and target language.
 
@@ -178,53 +187,73 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         )
 
         try:
-            # Process each XHTML and collect results
-            all_summaries: dict[str, str] = {}
-            all_chunk_summaries: list[str] = []
-            all_chunk_terms: list[list[dict[str, str]]] = []
-            accumulated_terms: dict[str, str] = {}
+            # Filter XHTMLs with content
+            xhtmls_with_content = [
+                xhtml for xhtml in extraction.xhtml_extractions
+                if xhtml.raw_text.strip()
+            ]
 
-            for xhtml in extraction.xhtml_extractions:
-                if not xhtml.raw_text.strip():
-                    continue
+            if not xhtmls_with_content:
+                return PreprocessResult(
+                    epub_id=extraction.epub_id,
+                    term_dictionary=TermDictionary(
+                        source_language=extraction.source_language,
+                        target_language=target_language,
+                        mappings=[],
+                    ),
+                    summaries={},
+                    epub_summary="",
+                )
 
-                # Process this XHTML
-                xhtml_summary, xhtml_terms = await self._process_xhtml(
+            # Process all XHTMLs in parallel
+            xhtml_tasks = [
+                self._process_xhtml(
                     xhtml=xhtml,
                     source_language=extraction.source_language,
                     target_language=target_language,
                     chunk_size=chunk_size,
-                    existing_terms=accumulated_terms,
                 )
+                for xhtml in xhtmls_with_content
+            ]
+            xhtml_results = await asyncio.gather(*xhtml_tasks)
 
+            # Collect results
+            all_summaries: dict[str, str] = {}
+            all_xhtml_terms: list[list[dict[str, str]]] = []
+            all_xhtml_summaries: list[str] = []
+
+            for xhtml, (xhtml_summary, xhtml_terms) in zip(
+                xhtmls_with_content, xhtml_results
+            ):
                 all_summaries[xhtml.xhtml_id] = xhtml_summary
-
-                # Accumulate for final merge
                 if xhtml_summary:
-                    all_chunk_summaries.append(xhtml_summary)
+                    all_xhtml_summaries.append(xhtml_summary)
                 if xhtml_terms:
-                    all_chunk_terms.append(xhtml_terms)
+                    all_xhtml_terms.append(xhtml_terms)
 
-                # Update accumulated terms for consistency
-                for term in xhtml_terms:
-                    if "source" in term and "target" in term:
-                        accumulated_terms[term["source"]] = term["target"]
-
-            # Final merge if we have multiple XHTMLs
-            if len(all_chunk_summaries) > 1:
+            # Merge all XHTML terms into final EPUB term dictionary
+            epub_summary = ""
+            if len(all_xhtml_terms) > 1:
+                # Use merge API to deduplicate and resolve conflicts
+                # Include summaries for better context during term conflict resolution
                 merged = await self._api_client.merge_extractions(
-                    chunk_summaries=all_chunk_summaries,
-                    chunk_terms=all_chunk_terms,
+                    chunk_summaries=all_xhtml_summaries,
+                    chunk_terms=all_xhtml_terms,
                     source_language=extraction.source_language,
                     target_language=target_language,
                 )
                 final_terms = merged.terms
-            else:
-                # Single XHTML or empty - use accumulated terms
+                epub_summary = merged.summary
+            elif len(all_xhtml_terms) == 1:
+                # Single XHTML - convert directly
                 final_terms = [
-                    TermMapping(source=s, target=t)
-                    for s, t in accumulated_terms.items()
+                    TermMapping(source=t["source"], target=t["target"])
+                    for t in all_xhtml_terms[0]
                 ]
+                # Use single XHTML summary as epub summary
+                epub_summary = all_xhtml_summaries[0] if all_xhtml_summaries else ""
+            else:
+                final_terms = []
 
             term_dictionary = TermDictionary(
                 source_language=extraction.source_language,
@@ -236,6 +265,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 epub_id=extraction.epub_id,
                 term_dictionary=term_dictionary,
                 summaries=all_summaries,
+                epub_summary=epub_summary,
             )
 
             self.logger.info(
@@ -258,17 +288,17 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         source_language: Language,
         target_language: Language,
         chunk_size: int,
-        existing_terms: dict[str, str],
     ) -> tuple[str, list[dict[str, str]]]:
         """
-        Process a single XHTML file.
+        Process a single XHTML file with parallel chunk processing.
+
+        All chunks are processed in parallel, then results are merged.
 
         Args:
             xhtml: XHTML extraction data.
             source_language: Source language.
             target_language: Target language.
             chunk_size: Maximum chunk size.
-            existing_terms: Already extracted terms for consistency.
 
         Returns:
             Tuple of (summary, terms_as_dicts).
@@ -278,19 +308,23 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         if not chunks:
             return "", []
 
-        # Process each chunk
-        chunk_summaries: list[str] = []
-        chunk_terms: list[list[dict[str, str]]] = []
-        current_terms = dict(existing_terms)
-
-        for chunk in chunks:
-            result = await self._api_client.extract_chunk(
+        # Process all chunks in parallel (no existing_terms for independence)
+        chunk_tasks = [
+            self._api_client.extract_chunk(
                 chunk_text=chunk,
                 source_language=source_language,
                 target_language=target_language,
-                existing_terms=current_terms,
+                existing_terms=None,
             )
+            for chunk in chunks
+        ]
+        chunk_results = await asyncio.gather(*chunk_tasks)
 
+        # Collect chunk results
+        chunk_summaries: list[str] = []
+        chunk_terms: list[list[dict[str, str]]] = []
+
+        for result in chunk_results:
             if result.summary:
                 chunk_summaries.append(result.summary)
 
@@ -300,12 +334,8 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
             ]
             chunk_terms.append(terms_as_dicts)
 
-            # Update current terms for next chunk
-            for t in result.terms:
-                current_terms[t.source] = t.target
-
         # Merge chunks for this XHTML if multiple
-        if len(chunk_summaries) > 1:
+        if len(chunks) > 1:
             merged = await self._api_client.merge_extractions(
                 chunk_summaries=chunk_summaries,
                 chunk_terms=chunk_terms,
@@ -317,14 +347,13 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 for t in merged.terms
             ]
 
-        # Single chunk
-        if chunk_summaries:
-            all_terms = []
-            for terms in chunk_terms:
-                all_terms.extend(terms)
-            return chunk_summaries[0], all_terms
+        # Single chunk - return as-is
+        summary = chunk_summaries[0] if chunk_summaries else ""
+        all_terms: list[dict[str, str]] = []
+        for terms in chunk_terms:
+            all_terms.extend(terms)
 
-        return "", []
+        return summary, all_terms
 
     def _split_into_chunks(self, text: str, chunk_size: int) -> list[str]:
         """

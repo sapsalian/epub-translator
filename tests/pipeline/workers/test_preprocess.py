@@ -200,6 +200,59 @@ class TestPreprocessing:
         assert "xhtml-001" in result.summaries
         assert "xhtml-002" in result.summaries
 
+    def test_generates_epub_summary_from_merge(
+        self,
+        worker: PreprocessWorker,
+        preprocess_input: PreprocessInput,
+    ):
+        """Processing generates epub_summary from merged result."""
+        result = asyncio.run(worker.process(preprocess_input))
+
+        # epub_summary comes from merge_extractions result
+        assert result.epub_summary == "Merged summary."
+
+    def test_epub_summary_uses_xhtml_summary_for_single_xhtml(
+        self,
+        mock_api_client: AsyncMock,
+    ):
+        """Single XHTML uses its summary as epub_summary."""
+        extraction = ExtractionResult(
+            epub_id="single",
+            source_language=Language.ENGLISH,
+            xhtml_extractions=[
+                XhtmlExtraction(
+                    xhtml_id="xhtml-001",
+                    xhtml_path="chapter1.xhtml",
+                    text_units=[],
+                    raw_text="Some content here.",
+                ),
+            ],
+        )
+        input_data = PreprocessInput(
+            extraction_result=extraction,
+            target_language=Language.KOREAN,
+        )
+        worker = PreprocessWorker(api_client=mock_api_client)
+
+        result = asyncio.run(worker.process(input_data))
+
+        # Single XHTML uses chunk summary as epub_summary
+        assert result.epub_summary == "Chunk summary."
+
+    def test_merge_receives_summaries_for_context(
+        self,
+        worker: PreprocessWorker,
+        preprocess_input: PreprocessInput,
+        mock_api_client: AsyncMock,
+    ):
+        """merge_extractions receives XHTML summaries for term conflict resolution."""
+        asyncio.run(worker.process(preprocess_input))
+
+        # Verify merge was called with summaries
+        call_kwargs = mock_api_client.merge_extractions.call_args.kwargs
+        assert "chunk_summaries" in call_kwargs
+        assert len(call_kwargs["chunk_summaries"]) == 2  # Two XHTML summaries
+
     def test_calls_extract_chunk_for_each_xhtml(
         self,
         worker: PreprocessWorker,
