@@ -80,11 +80,7 @@ class TextUnit(BaseModel):
     )
 
 
-class TermCandidate(BaseModel):
-    """A potential term for the translation dictionary."""
-
-    term: str = Field(description="The term text")
-    frequency: int = Field(description="Occurrence count in the EPUB")
+# Note: TermCandidate removed - term extraction now done by LLM directly
 
 
 # =============================================================================
@@ -115,9 +111,6 @@ class ExtractionResult(BaseModel):
     source_language: Language = Field(description="Source language of the EPUB")
     xhtml_extractions: list[XhtmlExtraction] = Field(
         default_factory=list, description="Per-XHTML extraction results"
-    )
-    term_candidates: list[TermCandidate] = Field(
-        default_factory=list, description="Term candidates for dictionary (by frequency)"
     )
 
     def to_json(self) -> str:

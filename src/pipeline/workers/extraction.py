@@ -28,7 +28,6 @@ from src.pipeline.inner_tag_handler import InnerTagHandler
 from src.pipeline.models import (
     ExtractionResult,
     Language,
-    TermCandidate,
     TextLocation,
     TextUnit,
     XhtmlExtraction,
@@ -101,13 +100,11 @@ class ExtractionWorker(Worker[ExtractionInput, ExtractionResult]):
 
         try:
             xhtml_extractions = self._extract_all_xhtml(input_data)
-            term_candidates = self._collect_term_candidates(xhtml_extractions)
 
             result = ExtractionResult(
                 epub_id=input_data.epub_id,
                 source_language=input_data.source_language,
                 xhtml_extractions=xhtml_extractions,
-                term_candidates=term_candidates,
             )
 
             self.logger.info(
@@ -267,25 +264,3 @@ class ExtractionWorker(Worker[ExtractionInput, ExtractionResult]):
         """
         combined = f"{xhtml_id}:{xpath}"
         return hashlib.sha256(combined.encode()).hexdigest()[:16]
-
-    def _collect_term_candidates(
-        self, xhtml_extractions: list[XhtmlExtraction]
-    ) -> list[TermCandidate]:
-        """
-        Collect term candidates from extracted text.
-
-        For now, returns an empty list. Term extraction will be implemented
-        in a future enhancement.
-
-        Args:
-            xhtml_extractions: Extracted XHTML data.
-
-        Returns:
-            List of term candidates (currently empty).
-        """
-        # TODO: Implement term candidate extraction
-        # This could use:
-        # - Named Entity Recognition (NER)
-        # - Frequency-based proper noun detection
-        # - Pattern matching for technical terms
-        return []

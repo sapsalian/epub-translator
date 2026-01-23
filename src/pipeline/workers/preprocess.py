@@ -8,9 +8,9 @@ Input: PreprocessInput (extraction_result, target_language)
 Output: PreprocessResult
 
 This is an IO-bound worker that:
-1. Collects raw texts and term candidates from extraction result
-2. Calls API to generate term dictionary (technical terms, proper nouns)
-3. Calls API to generate per-XHTML summaries for translation context
+1. Chunks raw text from each XHTML
+2. Extracts summary + terms from each chunk in a single API call
+3. Merges chunk results into final summary + term dictionary
 """
 
 import logging
@@ -22,7 +22,6 @@ from src.pipeline.models import (
     ExtractionResult,
     Language,
     PreprocessResult,
-    TermCandidate,
     TermDictionary,
     TermMapping,
     XhtmlExtraction,
@@ -32,6 +31,23 @@ from .base import AsyncWorker, PreprocessError
 
 
 logger = logging.getLogger(__name__)
+
+
+# Default chunk size in characters
+DEFAULT_CHUNK_SIZE = 4000
+
+
+# =============================================================================
+# Data Classes for Chunk Results
+# =============================================================================
+
+
+class ChunkResult:
+    """Result from processing a single text chunk."""
+
+    def __init__(self, summary: str, terms: list[TermMapping]) -> None:
+        self.summary = summary
+        self.terms = terms
 
 
 # =============================================================================
@@ -49,41 +65,45 @@ class PreprocessAPIClient(Protocol):
     - Response parsing
     """
 
-    async def generate_term_dictionary(
+    async def extract_chunk(
         self,
-        raw_texts: list[str],
-        term_candidates: list[TermCandidate],
+        chunk_text: str,
         source_language: Language,
         target_language: Language,
-    ) -> list[TermMapping]:
+        existing_terms: dict[str, str] | None = None,
+    ) -> ChunkResult:
         """
-        Generate term dictionary from text and candidate terms.
+        Extract summary and terms from a text chunk.
 
         Args:
-            raw_texts: Raw text content from EPUB (chunked if needed).
-            term_candidates: Frequency-based term candidates as hints.
+            chunk_text: Text chunk to analyze.
+            source_language: Source language.
+            target_language: Target language.
+            existing_terms: Already extracted terms for consistency.
+
+        Returns:
+            ChunkResult with summary and terms.
+        """
+        ...
+
+    async def merge_extractions(
+        self,
+        chunk_summaries: list[str],
+        chunk_terms: list[list[dict[str, str]]],
+        source_language: Language,
+        target_language: Language,
+    ) -> ChunkResult:
+        """
+        Merge multiple chunk extractions into a unified result.
+
+        Args:
+            chunk_summaries: List of summaries from each chunk.
+            chunk_terms: List of term lists from each chunk.
             source_language: Source language.
             target_language: Target language.
 
         Returns:
-            List of term mappings (source -> target).
-        """
-        ...
-
-    async def generate_summary(
-        self,
-        raw_text: str,
-        source_language: Language,
-    ) -> str:
-        """
-        Generate summary for a single XHTML's content.
-
-        Args:
-            raw_text: Raw text content from the XHTML.
-            source_language: Source language.
-
-        Returns:
-            Summary text for translation context.
+            ChunkResult with combined summary and merged terms.
         """
         ...
 
@@ -100,6 +120,10 @@ class PreprocessInput(BaseModel):
         description="Result from ExtractionWorker"
     )
     target_language: Language = Field(description="Target language for translation")
+    chunk_size: int = Field(
+        default=DEFAULT_CHUNK_SIZE,
+        description="Maximum characters per chunk for API calls",
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -113,9 +137,10 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
     """
     Generates term dictionary and summaries for translation context.
 
-    Uses API calls to:
-    1. Extract and translate technical terms and proper nouns
-    2. Generate summaries for each XHTML to provide translation context
+    Uses chunked API calls to:
+    1. Extract summary + terms from each text chunk
+    2. Merge chunk results into per-XHTML summary + accumulated terms
+    3. Final merge to create unified term dictionary
     """
 
     def __init__(self, api_client: PreprocessAPIClient) -> None:
@@ -143,33 +168,80 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         """
         extraction = input_data.extraction_result
         target_language = input_data.target_language
+        chunk_size = input_data.chunk_size
 
         self.logger.info(
-            "Starting preprocessing for EPUB: %s (target: %s)",
+            "Starting preprocessing for EPUB: %s (target: %s, chunk_size: %d)",
             extraction.epub_id,
             target_language.value,
+            chunk_size,
         )
 
         try:
-            # Generate term dictionary
-            term_dictionary = await self._generate_term_dictionary(
-                extraction=extraction,
-                target_language=target_language,
-            )
+            # Process each XHTML and collect results
+            all_summaries: dict[str, str] = {}
+            all_chunk_summaries: list[str] = []
+            all_chunk_terms: list[list[dict[str, str]]] = []
+            accumulated_terms: dict[str, str] = {}
 
-            # Generate summaries for each XHTML
-            summaries = await self._generate_summaries(extraction=extraction)
+            for xhtml in extraction.xhtml_extractions:
+                if not xhtml.raw_text.strip():
+                    continue
+
+                # Process this XHTML
+                xhtml_summary, xhtml_terms = await self._process_xhtml(
+                    xhtml=xhtml,
+                    source_language=extraction.source_language,
+                    target_language=target_language,
+                    chunk_size=chunk_size,
+                    existing_terms=accumulated_terms,
+                )
+
+                all_summaries[xhtml.xhtml_id] = xhtml_summary
+
+                # Accumulate for final merge
+                if xhtml_summary:
+                    all_chunk_summaries.append(xhtml_summary)
+                if xhtml_terms:
+                    all_chunk_terms.append(xhtml_terms)
+
+                # Update accumulated terms for consistency
+                for term in xhtml_terms:
+                    if "source" in term and "target" in term:
+                        accumulated_terms[term["source"]] = term["target"]
+
+            # Final merge if we have multiple XHTMLs
+            if len(all_chunk_summaries) > 1:
+                merged = await self._api_client.merge_extractions(
+                    chunk_summaries=all_chunk_summaries,
+                    chunk_terms=all_chunk_terms,
+                    source_language=extraction.source_language,
+                    target_language=target_language,
+                )
+                final_terms = merged.terms
+            else:
+                # Single XHTML or empty - use accumulated terms
+                final_terms = [
+                    TermMapping(source=s, target=t)
+                    for s, t in accumulated_terms.items()
+                ]
+
+            term_dictionary = TermDictionary(
+                source_language=extraction.source_language,
+                target_language=target_language,
+                mappings=final_terms,
+            )
 
             result = PreprocessResult(
                 epub_id=extraction.epub_id,
                 term_dictionary=term_dictionary,
-                summaries=summaries,
+                summaries=all_summaries,
             )
 
             self.logger.info(
                 "Preprocessing complete: %d terms, %d summaries",
                 len(term_dictionary.mappings),
-                len(summaries),
+                len(all_summaries),
             )
 
             return result
@@ -180,86 +252,119 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
             self.logger.error("Preprocessing failed: %s", e)
             raise PreprocessError(f"Preprocessing failed: {e}") from e
 
-    async def _generate_term_dictionary(
+    async def _process_xhtml(
         self,
-        extraction: ExtractionResult,
+        xhtml: XhtmlExtraction,
+        source_language: Language,
         target_language: Language,
-    ) -> TermDictionary:
+        chunk_size: int,
+        existing_terms: dict[str, str],
+    ) -> tuple[str, list[dict[str, str]]]:
         """
-        Generate term dictionary using API.
+        Process a single XHTML file.
 
         Args:
-            extraction: Extraction result with term candidates.
+            xhtml: XHTML extraction data.
+            source_language: Source language.
             target_language: Target language.
+            chunk_size: Maximum chunk size.
+            existing_terms: Already extracted terms for consistency.
 
         Returns:
-            TermDictionary with term mappings.
+            Tuple of (summary, terms_as_dicts).
         """
-        raw_texts = self._collect_raw_texts(extraction.xhtml_extractions)
+        chunks = self._split_into_chunks(xhtml.raw_text, chunk_size)
 
-        if not raw_texts and not extraction.term_candidates:
-            self.logger.debug("No content for term dictionary generation")
-            return TermDictionary(
-                source_language=extraction.source_language,
+        if not chunks:
+            return "", []
+
+        # Process each chunk
+        chunk_summaries: list[str] = []
+        chunk_terms: list[list[dict[str, str]]] = []
+        current_terms = dict(existing_terms)
+
+        for chunk in chunks:
+            result = await self._api_client.extract_chunk(
+                chunk_text=chunk,
+                source_language=source_language,
                 target_language=target_language,
-                mappings=[],
+                existing_terms=current_terms,
             )
 
-        mappings = await self._api_client.generate_term_dictionary(
-            raw_texts=raw_texts,
-            term_candidates=extraction.term_candidates,
-            source_language=extraction.source_language,
-            target_language=target_language,
-        )
+            if result.summary:
+                chunk_summaries.append(result.summary)
 
-        return TermDictionary(
-            source_language=extraction.source_language,
-            target_language=target_language,
-            mappings=mappings,
-        )
+            terms_as_dicts = [
+                {"source": t.source, "target": t.target}
+                for t in result.terms
+            ]
+            chunk_terms.append(terms_as_dicts)
 
-    async def _generate_summaries(
-        self,
-        extraction: ExtractionResult,
-    ) -> dict[str, str]:
-        """
-        Generate summaries for each XHTML.
+            # Update current terms for next chunk
+            for t in result.terms:
+                current_terms[t.source] = t.target
 
-        Args:
-            extraction: Extraction result with XHTML data.
-
-        Returns:
-            Dictionary mapping xhtml_id to summary.
-        """
-        summaries: dict[str, str] = {}
-
-        for xhtml in extraction.xhtml_extractions:
-            if not xhtml.raw_text.strip():
-                continue
-
-            summary = await self._api_client.generate_summary(
-                raw_text=xhtml.raw_text,
-                source_language=extraction.source_language,
+        # Merge chunks for this XHTML if multiple
+        if len(chunk_summaries) > 1:
+            merged = await self._api_client.merge_extractions(
+                chunk_summaries=chunk_summaries,
+                chunk_terms=chunk_terms,
+                source_language=source_language,
+                target_language=target_language,
             )
-            summaries[xhtml.xhtml_id] = summary
+            return merged.summary, [
+                {"source": t.source, "target": t.target}
+                for t in merged.terms
+            ]
 
-        return summaries
+        # Single chunk
+        if chunk_summaries:
+            all_terms = []
+            for terms in chunk_terms:
+                all_terms.extend(terms)
+            return chunk_summaries[0], all_terms
 
-    def _collect_raw_texts(
-        self,
-        xhtml_extractions: list[XhtmlExtraction],
-    ) -> list[str]:
+        return "", []
+
+    def _split_into_chunks(self, text: str, chunk_size: int) -> list[str]:
         """
-        Collect non-empty raw texts from XHTML extractions.
+        Split text into chunks of approximately chunk_size characters.
+
+        Tries to split at paragraph boundaries when possible.
 
         Args:
-            xhtml_extractions: List of XHTML extractions.
+            text: Text to split.
+            chunk_size: Target chunk size.
 
         Returns:
-            List of non-empty raw text strings.
+            List of text chunks.
         """
-        return [
-            xhtml.raw_text
-            for xhtml in xhtml_extractions
-            if xhtml.raw_text.strip()
-        ]
+        if not text.strip():
+            return []
+
+        if len(text) <= chunk_size:
+            return [text]
+
+        chunks: list[str] = []
+        paragraphs = text.split("\n\n")
+
+        current_chunk: list[str] = []
+        current_size = 0
+
+        for para in paragraphs:
+            para_size = len(para) + 2  # +2 for \n\n
+
+            if current_size + para_size > chunk_size and current_chunk:
+                # Save current chunk and start new one
+                chunks.append("\n\n".join(current_chunk))
+                current_chunk = [para]
+                current_size = para_size
+            else:
+                current_chunk.append(para)
+                current_size += para_size
+
+        # Don't forget the last chunk
+        if current_chunk:
+            chunks.append("\n\n".join(current_chunk))
+
+        return chunks
