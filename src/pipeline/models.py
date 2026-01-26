@@ -54,6 +54,10 @@ class InnerTag(BaseModel):
     is_self_closing: bool = Field(
         default=False, description="Whether tag is self-closing (br, img, etc.)"
     )
+    raw_xml: str | None = Field(
+        default=None,
+        description="Raw XML for opaque tags (math, svg, code, etc.) that should be preserved as-is",
+    )
 
 
 class TextLocation(BaseModel):

@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 
 from lxml import etree
 
+from .constants import UNTRANSLATABLE_TAGS
 from .models import InnerTag
 
 
@@ -106,6 +107,9 @@ class InnerTagHandler:
         """
         Extract inner tags from an element and replace with numbered placeholders.
 
+        Opaque tags (code, math, svg, etc.) are preserved as raw XML and treated
+        as self-closing placeholders to avoid altering their internal structure.
+
         Args:
             element: The lxml element to process.
 
@@ -129,11 +133,15 @@ class InnerTagHandler:
                 inner_tag = self._create_inner_tag(child, idx)
                 inner_tags.append(inner_tag)
 
-                placeholder = self._format_placeholder(
-                    idx,
-                    inner_tag.is_self_closing,
-                    inner_content=process_node(child) if not inner_tag.is_self_closing else None,
-                )
+                # Opaque tags are treated as self-closing (no internal processing)
+                if inner_tag.raw_xml is not None:
+                    placeholder = f"{{{{{idx}/}}}}"  # {{n/}}
+                else:
+                    placeholder = self._format_placeholder(
+                        idx,
+                        inner_tag.is_self_closing,
+                        inner_content=process_node(child) if not inner_tag.is_self_closing else None,
+                    )
                 parts.append(placeholder)
 
                 if child.tail:
@@ -152,6 +160,9 @@ class InnerTagHandler:
         """
         Create an InnerTag from an lxml element.
 
+        For opaque tags (code, math, svg, etc.), the raw XML is preserved
+        to maintain internal structure without modification.
+
         Args:
             element: The lxml element.
             index: The placeholder index.
@@ -164,6 +175,14 @@ class InnerTagHandler:
             if isinstance(element.tag, str)
             else str(element.tag)
         )
+
+        # Check if this is an opaque tag that should be preserved as-is
+        is_opaque = tag_name.lower() in UNTRANSLATABLE_TAGS
+        raw_xml: str | None = None
+
+        if is_opaque:
+            # Preserve the entire element as raw XML
+            raw_xml = etree.tostring(element, encoding="unicode")
 
         # Collect attributes (excluding namespace declarations)
         attributes = {
@@ -178,6 +197,7 @@ class InnerTagHandler:
             tag_name=tag_name,
             attributes=attributes,
             is_self_closing=is_self_closing,
+            raw_xml=raw_xml,
         )
 
     def _format_placeholder(
@@ -299,6 +319,10 @@ class InnerTagHandler:
                 original_placeholder,
             )
             return ""
+
+        # Opaque tag with raw XML - return as-is
+        if tag.raw_xml is not None:
+            return tag.raw_xml
 
         if self_closing_suffix and not closing_prefix:
             # Self-closing: {{n/}}

@@ -337,6 +337,100 @@ class TestRoundTrip:
         assert restored == "안녕 <b>세상</b>!"
 
 
+class TestOpaqueTags:
+    """Tests for opaque tag handling (code, math, svg, etc.)"""
+
+    def test_code_tag_preserved_as_raw_xml(self, handler: InnerTagHandler):
+        """Code tag content is preserved as raw XML."""
+        element = etree.fromstring("<p>See <code>x = 1</code> example.</p>")
+        result = handler.extract(element)
+
+        assert result.tagged_text == "See {{1/}} example."
+        assert len(result.inner_tags) == 1
+        assert result.inner_tags[0].tag_name == "code"
+        assert result.inner_tags[0].raw_xml is not None
+        assert "x = 1" in result.inner_tags[0].raw_xml
+
+    def test_math_tag_preserved_as_raw_xml(self, handler: InnerTagHandler):
+        """Math tag structure is preserved as raw XML."""
+        element = etree.fromstring(
+            '<p>Formula: <math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math></p>'
+        )
+        result = handler.extract(element)
+
+        assert result.tagged_text == "Formula: {{1/}}"
+        assert result.inner_tags[0].raw_xml is not None
+        assert "<mi>x</mi>" in result.inner_tags[0].raw_xml
+
+    def test_svg_tag_preserved_as_raw_xml(self, handler: InnerTagHandler):
+        """SVG tag structure is preserved as raw XML."""
+        element = etree.fromstring(
+            '<p>Icon: <svg xmlns="http://www.w3.org/2000/svg"><circle r="5"/></svg></p>'
+        )
+        result = handler.extract(element)
+
+        assert result.tagged_text == "Icon: {{1/}}"
+        assert result.inner_tags[0].raw_xml is not None
+        assert "<circle" in result.inner_tags[0].raw_xml
+
+    def test_pre_tag_preserved_as_raw_xml(self, handler: InnerTagHandler):
+        """Pre tag content is preserved as raw XML."""
+        element = etree.fromstring("<div>Code block:<pre>  indented\n  code</pre></div>")
+        result = handler.extract(element)
+
+        assert "{{1/}}" in result.tagged_text
+        assert result.inner_tags[0].raw_xml is not None
+
+    def test_opaque_tag_restore_returns_raw_xml(self, handler: InnerTagHandler):
+        """Restoring opaque tag returns the original raw XML."""
+        raw = '<code class="lang">x = 1</code>'
+        inner_tags = [
+            InnerTag(index=1, tag_name="code", attributes={}, is_self_closing=False, raw_xml=raw)
+        ]
+        result = handler.restore("See {{1/}} example.", inner_tags)
+
+        assert result == f"See {raw} example."
+
+    def test_opaque_tag_round_trip(self, handler: InnerTagHandler):
+        """Round-trip preserves opaque tag exactly."""
+        original = '<p>Run <code class="python">print("hello")</code> to test.</p>'
+        element = etree.fromstring(original)
+
+        # Extract
+        extracted = handler.extract(element)
+
+        # Simulate translation
+        translated = "실행 {{1/}} 테스트하세요."
+
+        # Restore
+        restored = handler.restore(translated, extracted.inner_tags)
+
+        assert 'class="python"' in restored
+        assert 'print("hello")' in restored
+
+    def test_mixed_opaque_and_regular_tags(self, handler: InnerTagHandler):
+        """Mix of opaque and regular tags."""
+        element = etree.fromstring("<p>See <b>bold</b> and <code>code</code> here.</p>")
+        result = handler.extract(element)
+
+        # b is regular, code is opaque
+        assert result.tagged_text == "See {{1}}bold{{/1}} and {{2/}} here."
+        assert result.inner_tags[0].raw_xml is None  # b is regular
+        assert result.inner_tags[1].raw_xml is not None  # code is opaque
+
+    def test_nested_content_in_opaque_tag_preserved(self, handler: InnerTagHandler):
+        """Nested content inside opaque tag is preserved."""
+        element = etree.fromstring(
+            "<p>Example: <code><span class='keyword'>function</span> foo()</code></p>"
+        )
+        result = handler.extract(element)
+
+        # The entire code tag including nested span should be in raw_xml
+        assert result.inner_tags[0].raw_xml is not None
+        assert "<span" in result.inner_tags[0].raw_xml
+        assert "keyword" in result.inner_tags[0].raw_xml
+
+
 class TestLogging:
     """Tests for logging behavior."""
 

@@ -167,7 +167,8 @@ class TestExtraction:
                 # Check that placeholders exist in tagged_text
                 for inner_tag in unit.inner_tags:
                     idx = inner_tag.index
-                    if inner_tag.is_self_closing:
+                    # Opaque tags (with raw_xml) and self-closing tags use {{n/}} format
+                    if inner_tag.is_self_closing or inner_tag.raw_xml is not None:
                         assert f"{{{{{idx}/}}}}" in unit.tagged_text
                     else:
                         assert f"{{{{{idx}}}}}" in unit.tagged_text
