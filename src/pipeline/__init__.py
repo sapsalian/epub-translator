@@ -1,8 +1,10 @@
 """Translation pipeline for EPUB files."""
 
+from .config import PipelineConfig
 from .constants import UNTRANSLATABLE_TAGS
 from .filters import TranslatableElementFilter
 from .inner_tag_handler import InnerTagHandler, ExtractionOutput
+from .orchestrator import PipelineOrchestrator
 from .models import (
     ExtractionResult,
     InnerTag,
@@ -20,6 +22,10 @@ from .models import (
 )
 
 __all__ = [
+    # Config
+    "PipelineConfig",
+    # Orchestrator
+    "PipelineOrchestrator",
     # Constants
     "UNTRANSLATABLE_TAGS",
     # Filters
