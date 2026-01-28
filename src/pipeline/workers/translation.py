@@ -39,6 +39,9 @@ DEFAULT_BATCH_SIZE = 20
 # Default maximum concurrent API calls
 DEFAULT_MAX_CONCURRENT = 5
 
+# Default maximum retries for empty translations
+DEFAULT_MAX_EMPTY_RETRIES = 2
+
 
 # =============================================================================
 # API Client Protocol
@@ -107,6 +110,10 @@ class TranslationInput(BaseModel):
     max_concurrent: int = Field(
         default=DEFAULT_MAX_CONCURRENT,
         description="Maximum concurrent API calls",
+    )
+    max_empty_retries: int = Field(
+        default=DEFAULT_MAX_EMPTY_RETRIES,
+        description="Maximum retries for empty translation results",
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -190,6 +197,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                 term_dictionary=term_dict,
                 context_summary=input_data.context_summary,
                 semaphore=semaphore,
+                max_empty_retries=input_data.max_empty_retries,
             )
 
             result = TranslationResult(
@@ -220,6 +228,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         term_dictionary: dict[str, str],
         context_summary: str,
         semaphore: asyncio.Semaphore,
+        max_empty_retries: int = DEFAULT_MAX_EMPTY_RETRIES,
     ) -> list[TranslatedUnit]:
         """
         Translate all batches with concurrency control.
@@ -231,6 +240,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
             term_dictionary: Term mappings.
             context_summary: Content summary.
             semaphore: Semaphore for concurrency control.
+            max_empty_retries: Maximum retries for empty translations.
 
         Returns:
             List of all translated units in order.
@@ -244,6 +254,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                 term_dictionary=term_dictionary,
                 context_summary=context_summary,
                 semaphore=semaphore,
+                max_empty_retries=max_empty_retries,
             )
             for i, batch in enumerate(batches)
         ]
@@ -266,9 +277,12 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         term_dictionary: dict[str, str],
         context_summary: str,
         semaphore: asyncio.Semaphore,
+        max_empty_retries: int = DEFAULT_MAX_EMPTY_RETRIES,
     ) -> list[TranslatedUnit]:
         """
         Translate a single batch with semaphore for rate limiting.
+
+        Retries empty translations up to max_empty_retries times.
 
         Args:
             batch: Text units to translate.
@@ -278,6 +292,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
             term_dictionary: Term mappings.
             context_summary: Content summary.
             semaphore: Semaphore for concurrency control.
+            max_empty_retries: Maximum retries for empty translations.
 
         Returns:
             List of translated units for this batch.
@@ -287,6 +302,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                 "Translating batch %d (%d units)", batch_index, len(batch)
             )
 
+            # Initial translation
             translations = await self._api_client.translate(
                 text_units=batch,
                 source_language=source_language,
@@ -295,15 +311,63 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                 context_summary=context_summary,
             )
 
-            # Create TranslatedUnit objects
-            translated_units = []
+            # Build result map (unit_id -> translation)
+            result_map: dict[str, str] = {}
             for unit, translation in zip(batch, translations):
-                translated_units.append(
-                    TranslatedUnit(
-                        unit_id=unit.unit_id,
-                        translated_text=translation,
-                    )
+                result_map[unit.unit_id] = translation
+
+            # Retry empty translations
+            for retry in range(max_empty_retries):
+                # Find units with empty translations
+                empty_units = [
+                    unit for unit in batch
+                    if not result_map.get(unit.unit_id, "").strip()
+                ]
+
+                if not empty_units:
+                    break
+
+                self.logger.warning(
+                    "Batch %d: %d empty translations, retry %d/%d",
+                    batch_index,
+                    len(empty_units),
+                    retry + 1,
+                    max_empty_retries,
                 )
+
+                # Retry only empty units
+                retry_translations = await self._api_client.translate(
+                    text_units=empty_units,
+                    source_language=source_language,
+                    target_language=target_language,
+                    term_dictionary=term_dictionary,
+                    context_summary=context_summary,
+                )
+
+                # Update result map with retry results
+                for unit, translation in zip(empty_units, retry_translations):
+                    if translation.strip():
+                        result_map[unit.unit_id] = translation
+
+            # Log remaining empty translations
+            remaining_empty = sum(
+                1 for unit in batch if not result_map.get(unit.unit_id, "").strip()
+            )
+            if remaining_empty > 0:
+                self.logger.warning(
+                    "Batch %d: %d translations still empty after retries",
+                    batch_index,
+                    remaining_empty,
+                )
+
+            # Create TranslatedUnit objects in original order
+            translated_units = [
+                TranslatedUnit(
+                    unit_id=unit.unit_id,
+                    translated_text=result_map.get(unit.unit_id, ""),
+                )
+                for unit in batch
+            ]
 
             return translated_units
 
