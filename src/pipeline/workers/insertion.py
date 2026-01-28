@@ -313,6 +313,15 @@ class InsertionWorker(Worker[InsertionInput, InsertionResult]):
                 translated_unit = translation_map[unit_id]
                 original_unit = unit_map[unit_id]
 
+                # Skip empty translations - keep original content
+                if not translated_unit.translated_text.strip():
+                    self.logger.warning(
+                        "Empty translation for unit %s at %s - keeping original",
+                        unit_id,
+                        f"{xhtml_path}:{xpath}",
+                    )
+                    continue
+
                 # Restore inner tags and update element
                 self._update_element(
                     elem=elem,
