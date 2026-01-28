@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.pipeline.inner_tag_handler import InnerTagHandler
 from src.pipeline.models import (
     ExtractionResult,
+    InnerTag,
     InsertionResult,
     Language,
     TextUnit,
@@ -362,7 +363,7 @@ class InsertionWorker(Worker[InsertionInput, InsertionResult]):
         self,
         elem: etree._Element,
         translated_text: str,
-        inner_tags: list,
+        inner_tags: list[InnerTag],
         errors: list[str],
         context: str,
     ) -> None:
