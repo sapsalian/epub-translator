@@ -266,6 +266,7 @@ class PipelineOrchestrator:
             extraction_result=extraction_result,
             target_language=self._config.target_language,
             chunk_size=self._config.chunk_size,
+            max_concurrent=self._config.preprocess_max_concurrent,
         )
 
         result = await worker.process(preprocess_input)
@@ -319,11 +320,11 @@ class PipelineOrchestrator:
             "Translating %d XHTMLs in parallel (%d already done, max_concurrent=%d)",
             len(xhtmls_to_translate),
             len(already_translated),
-            self._config.max_concurrent,
+            self._config.translation_max_concurrent,
         )
 
         worker = TranslationWorker(self._api_client)
-        semaphore = asyncio.Semaphore(self._config.max_concurrent)
+        semaphore = asyncio.Semaphore(self._config.translation_max_concurrent)
 
         async def translate_xhtml(xhtml: XhtmlExtraction) -> TranslationResult:
             """Translate a single XHTML with semaphore for rate limiting."""

@@ -60,9 +60,15 @@ class PipelineConfig(BaseModel):
         default=20,
         description="Number of text units per translation API call",
     )
-    max_concurrent: int = Field(
+
+    # Concurrency settings
+    preprocess_max_concurrent: int = Field(
+        default=10,
+        description="Maximum concurrent API calls for preprocessing",
+    )
+    translation_max_concurrent: int = Field(
         default=5,
-        description="Maximum concurrent API calls",
+        description="Maximum concurrent API calls for translation",
     )
 
     # Retry settings
@@ -99,7 +105,8 @@ class PipelineConfig(BaseModel):
         - PIPELINE_MODEL: API model name
         - PIPELINE_CHUNK_SIZE: Preprocessing chunk size
         - PIPELINE_BATCH_SIZE: Translation batch size
-        - PIPELINE_MAX_CONCURRENT: Max concurrent API calls
+        - PIPELINE_PREPROCESS_MAX_CONCURRENT: Max concurrent API calls for preprocessing
+        - PIPELINE_TRANSLATION_MAX_CONCURRENT: Max concurrent API calls for translation
         - PIPELINE_MAX_RETRIES: Max retry attempts
         - PIPELINE_BASE_DELAY: Base delay for retries
         - PIPELINE_OUTPUT_DIR: Output directory path
@@ -140,7 +147,13 @@ class PipelineConfig(BaseModel):
             overrides["model"] = model
 
         # Integer fields
-        int_fields = ["chunk_size", "batch_size", "max_concurrent", "max_retries"]
+        int_fields = [
+            "chunk_size",
+            "batch_size",
+            "preprocess_max_concurrent",
+            "translation_max_concurrent",
+            "max_retries",
+        ]
         for field in int_fields:
             env_key = f"{ENV_PREFIX}{field.upper()}"
             if value := os.environ.get(env_key):

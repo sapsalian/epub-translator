@@ -31,7 +31,8 @@ class TestPipelineConfig:
         assert config.model == "gpt-4.1-mini"
         assert config.chunk_size == 4000
         assert config.batch_size == 20
-        assert config.max_concurrent == 5
+        assert config.preprocess_max_concurrent == 10
+        assert config.translation_max_concurrent == 5
         assert config.max_retries == 3
         assert config.base_delay == 1.0
         assert config.output_dir == Path("./output")
@@ -45,13 +46,15 @@ class TestPipelineConfig:
             model="gpt-4o",
             chunk_size=8000,
             batch_size=50,
-            max_concurrent=10,
+            preprocess_max_concurrent=15,
+            translation_max_concurrent=10,
             output_dir=Path("/custom/output"),
         )
         assert config.model == "gpt-4o"
         assert config.chunk_size == 8000
         assert config.batch_size == 50
-        assert config.max_concurrent == 10
+        assert config.preprocess_max_concurrent == 15
+        assert config.translation_max_concurrent == 10
         assert config.output_dir == Path("/custom/output")
 
     def test_get_retry_config(self):
@@ -78,7 +81,8 @@ class TestPipelineConfigFromEnv:
                 target_language=Language.KOREAN,
             )
             assert config.model == "gpt-4.1-mini"
-            assert config.max_concurrent == 5
+            assert config.preprocess_max_concurrent == 10
+            assert config.translation_max_concurrent == 5
 
     def test_from_env_model_override(self):
         """PIPELINE_MODEL overrides model."""
@@ -94,7 +98,8 @@ class TestPipelineConfigFromEnv:
         env = {
             f"{ENV_PREFIX}CHUNK_SIZE": "8000",
             f"{ENV_PREFIX}BATCH_SIZE": "50",
-            f"{ENV_PREFIX}MAX_CONCURRENT": "20",
+            f"{ENV_PREFIX}PREPROCESS_MAX_CONCURRENT": "20",
+            f"{ENV_PREFIX}TRANSLATION_MAX_CONCURRENT": "15",
             f"{ENV_PREFIX}MAX_RETRIES": "5",
         }
         with patch.dict(os.environ, env):
@@ -104,7 +109,8 @@ class TestPipelineConfigFromEnv:
             )
             assert config.chunk_size == 8000
             assert config.batch_size == 50
-            assert config.max_concurrent == 20
+            assert config.preprocess_max_concurrent == 20
+            assert config.translation_max_concurrent == 15
             assert config.max_retries == 5
 
     def test_from_env_float_override(self):
@@ -132,20 +138,20 @@ class TestPipelineConfigFromEnv:
 
     def test_from_env_invalid_integer_ignored(self):
         """Invalid integer env vars are ignored."""
-        with patch.dict(os.environ, {f"{ENV_PREFIX}MAX_CONCURRENT": "not_a_number"}):
+        with patch.dict(os.environ, {f"{ENV_PREFIX}TRANSLATION_MAX_CONCURRENT": "not_a_number"}):
             config = PipelineConfig.from_env(
                 source_language=Language.ENGLISH,
                 target_language=Language.KOREAN,
             )
             # Should use default value
-            assert config.max_concurrent == 5
+            assert config.translation_max_concurrent == 5
 
     def test_from_env_kwargs_override_env(self):
         """Explicit kwargs take precedence over env vars."""
-        with patch.dict(os.environ, {f"{ENV_PREFIX}MAX_CONCURRENT": "20"}):
+        with patch.dict(os.environ, {f"{ENV_PREFIX}TRANSLATION_MAX_CONCURRENT": "20"}):
             config = PipelineConfig.from_env(
                 source_language=Language.ENGLISH,
                 target_language=Language.KOREAN,
-                max_concurrent=30,  # Explicit override
+                translation_max_concurrent=30,  # Explicit override
             )
-            assert config.max_concurrent == 30
+            assert config.translation_max_concurrent == 30
