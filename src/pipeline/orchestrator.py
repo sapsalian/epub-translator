@@ -19,6 +19,7 @@ from .models import (
     PreprocessResult,
     TranslationResult,
     TranslationTask,
+    XhtmlExtraction,
 )
 from .persistence import CheckpointManager, FilePersistenceBackend, JobStage
 from .workers.extraction import ExtractionInput, ExtractionWorker
@@ -291,15 +292,16 @@ class PipelineOrchestrator:
         Run translation stage.
 
         Supports resuming from partial translation.
+        Processes multiple XHTMLs in parallel with semaphore for rate limiting.
         """
         logger.info("Running translation for %s", epub_id)
 
         lang = self._config.target_language
 
-        # Filter out already translated XHTMLs
+        # Filter out already translated XHTMLs and those with no text units
         xhtmls_to_translate = [
             xhtml for xhtml in extraction_result.xhtml_extractions
-            if xhtml.xhtml_id not in already_translated
+            if xhtml.xhtml_id not in already_translated and xhtml.text_units
         ]
 
         total = len(extraction_result.xhtml_extractions)
@@ -314,55 +316,59 @@ class PipelineOrchestrator:
             return await self._checkpoint_manager.load_all_translations(epub_id, lang)
 
         logger.info(
-            "Translating %d XHTMLs (%d already done)",
+            "Translating %d XHTMLs in parallel (%d already done, max_concurrent=%d)",
             len(xhtmls_to_translate),
             len(already_translated),
+            self._config.max_concurrent,
         )
 
         worker = TranslationWorker(self._api_client)
-        results: list[TranslationResult] = []
+        semaphore = asyncio.Semaphore(self._config.max_concurrent)
 
-        for xhtml in xhtmls_to_translate:
-            # Skip XHTMLs with no text units
-            if not xhtml.text_units:
-                continue
+        async def translate_xhtml(xhtml: XhtmlExtraction) -> TranslationResult:
+            """Translate a single XHTML with semaphore for rate limiting."""
+            async with semaphore:
+                # Get summary for this XHTML
+                xhtml_summary = preprocess_result.summaries.get(xhtml.xhtml_id, "")
+                context_summary = xhtml_summary or preprocess_result.epub_summary
 
-            # Get summary for this XHTML
-            xhtml_summary = preprocess_result.summaries.get(xhtml.xhtml_id, "")
-            context_summary = xhtml_summary or preprocess_result.epub_summary
+                task = TranslationTask(
+                    epub_id=epub_id,
+                    xhtml_id=xhtml.xhtml_id,
+                    target_language=lang,
+                    text_units=xhtml.text_units,
+                )
 
-            task = TranslationTask(
-                epub_id=epub_id,
-                xhtml_id=xhtml.xhtml_id,
-                target_language=lang,
-                text_units=xhtml.text_units,
-            )
+                translation_input = TranslationInput(
+                    task=task,
+                    source_language=self._config.source_language,
+                    term_dictionary=preprocess_result.term_dictionary,
+                    context_summary=context_summary,
+                    batch_size=self._config.batch_size,
+                    max_concurrent=1,  # Already rate-limited by outer semaphore
+                )
 
-            translation_input = TranslationInput(
-                task=task,
-                source_language=self._config.source_language,
-                term_dictionary=preprocess_result.term_dictionary,
-                context_summary=context_summary,
-                batch_size=self._config.batch_size,
-                max_concurrent=self._config.max_concurrent,
-            )
+                result = await worker.process(translation_input)
 
-            result = await worker.process(translation_input)
-            results.append(result)
+                # Save checkpoint after each XHTML (thread-safe with asyncio)
+                await self._checkpoint_manager.save_translation(result)
 
-            # Save checkpoint after each XHTML
-            await self._checkpoint_manager.save_translation(result)
+                # Update progress
+                await self._checkpoint_manager.increment_job_progress(
+                    epub_id, lang, JobStage.TRANSLATING
+                )
 
-            # Update progress
-            await self._checkpoint_manager.increment_job_progress(
-                epub_id, lang, JobStage.TRANSLATING
-            )
+                logger.debug("Translated XHTML %s: %d units", xhtml.xhtml_id, len(result.translated_units))
+                return result
 
-            logger.debug("Translated XHTML %s: %d units", xhtml.xhtml_id, len(result.translated_units))
+        # Run all translations in parallel with semaphore limiting concurrency
+        results = await asyncio.gather(*[
+            translate_xhtml(xhtml) for xhtml in xhtmls_to_translate
+        ])
 
         logger.info("Translation complete: %d XHTMLs translated", len(results))
 
-        return results
+        return list(results)
 
     async def _run_insertion(
         self,
