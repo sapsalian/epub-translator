@@ -60,7 +60,7 @@ def sample_preprocess():
         term_dictionary=TermDictionary(
             source_language=Language.ENGLISH,
             target_language=Language.KOREAN,
-            mappings=[],
+            mappings={},
         ),
         summaries={"xhtml001": "Chapter 1 summary"},
         epub_summary="Overall summary",

@@ -11,8 +11,12 @@ Identifier scheme:
 """
 
 from enum import Enum
+from typing import TypeAlias
 
 from pydantic import BaseModel, Field
+
+# Source term -> target translation mapping
+TermDict: TypeAlias = dict[str, str]
 
 
 class Language(str, Enum):
@@ -132,20 +136,13 @@ class ExtractionResult(BaseModel):
 # =============================================================================
 
 
-class TermMapping(BaseModel):
-    """A single term mapping in the dictionary."""
-
-    source: str = Field(description="Source term")
-    target: str = Field(description="Translated term")
-
-
 class TermDictionary(BaseModel):
     """Dictionary of term translations for a specific language pair."""
 
     source_language: Language = Field(description="Source language")
     target_language: Language = Field(description="Target language")
-    mappings: list[TermMapping] = Field(
-        default_factory=list, description="Term mappings"
+    mappings: TermDict = Field(
+        default_factory=dict, description="Source term -> target translation"
     )
 
 

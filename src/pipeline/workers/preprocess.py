@@ -25,8 +25,8 @@ from src.pipeline.models import (
     ExtractionResult,
     Language,
     PreprocessResult,
+    TermDict,
     TermDictionary,
-    TermMapping,
     XhtmlExtraction,
 )
 
@@ -51,7 +51,7 @@ DEFAULT_MAX_CONCURRENT = 5
 class ChunkResult:
     """Result from processing a single text chunk."""
 
-    def __init__(self, summary: str, terms: list[TermMapping]) -> None:
+    def __init__(self, summary: str, terms: TermDict) -> None:
         self.summary = summary
         self.terms = terms
 
@@ -76,7 +76,7 @@ class PreprocessAPIClient(Protocol):
         chunk_text: str,
         source_language: Language,
         target_language: Language,
-        existing_terms: dict[str, str] | None = None,
+        existing_terms: TermDict | None = None,
     ) -> ChunkResult:
         """
         Extract summary and terms from a text chunk.
@@ -95,7 +95,7 @@ class PreprocessAPIClient(Protocol):
     async def merge_extractions(
         self,
         chunk_summaries: list[str],
-        chunk_terms: list[list[dict[str, str]]],
+        chunk_terms: list[TermDict],
         source_language: Language,
         target_language: Language,
     ) -> ChunkResult:
@@ -104,7 +104,7 @@ class PreprocessAPIClient(Protocol):
 
         Args:
             chunk_summaries: List of summaries from each chunk.
-            chunk_terms: List of term lists from each chunk.
+            chunk_terms: List of term dicts from each chunk (source -> target).
             source_language: Source language.
             target_language: Target language.
 
@@ -211,7 +211,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     term_dictionary=TermDictionary(
                         source_language=extraction.source_language,
                         target_language=target_language,
-                        mappings=[],
+                        mappings={},
                     ),
                     summaries={},
                     epub_summary="",
@@ -232,7 +232,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
 
             # Collect results
             all_summaries: dict[str, str] = {}
-            all_xhtml_terms: list[list[dict[str, str]]] = []
+            all_xhtml_terms: list[TermDict] = []
             all_xhtml_summaries: list[str] = []
 
             for xhtml, (xhtml_summary, xhtml_terms) in zip(
@@ -255,23 +255,20 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     source_language=extraction.source_language,
                     target_language=target_language,
                 )
-                final_terms = merged.terms
+                final_mappings = merged.terms
                 epub_summary = merged.summary
             elif len(all_xhtml_terms) == 1:
-                # Single XHTML - convert directly
-                final_terms = [
-                    TermMapping(source=t["source"], target=t["target"])
-                    for t in all_xhtml_terms[0]
-                ]
+                # Single XHTML - use directly
+                final_mappings = all_xhtml_terms[0]
                 # Use single XHTML summary as epub summary
                 epub_summary = all_xhtml_summaries[0] if all_xhtml_summaries else ""
             else:
-                final_terms = []
+                final_mappings = {}
 
             term_dictionary = TermDictionary(
                 source_language=extraction.source_language,
                 target_language=target_language,
-                mappings=final_terms,
+                mappings=final_mappings,
             )
 
             result = PreprocessResult(
@@ -302,7 +299,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         target_language: Language,
         chunk_size: int,
         semaphore: asyncio.Semaphore,
-    ) -> tuple[str, list[dict[str, str]]]:
+    ) -> tuple[str, TermDict]:
         """
         Process a single XHTML file with parallel chunk processing.
 
@@ -316,12 +313,12 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
             semaphore: Semaphore for API call concurrency control.
 
         Returns:
-            Tuple of (summary, terms_as_dicts).
+            Tuple of (summary, terms_dict).
         """
         chunks = self._split_into_chunks(xhtml.raw_text, chunk_size)
 
         if not chunks:
-            return "", []
+            return "", {}
 
         # Process all chunks in parallel with semaphore for rate limiting
         chunk_tasks = [
@@ -337,17 +334,12 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
 
         # Collect chunk results
         chunk_summaries: list[str] = []
-        chunk_terms: list[list[dict[str, str]]] = []
+        chunk_terms: list[TermDict] = []
 
         for result in chunk_results:
             if result.summary:
                 chunk_summaries.append(result.summary)
-
-            terms_as_dicts = [
-                {"source": t.source, "target": t.target}
-                for t in result.terms
-            ]
-            chunk_terms.append(terms_as_dicts)
+            chunk_terms.append(result.terms)
 
         # Merge chunks for this XHTML if multiple
         if len(chunks) > 1:
@@ -357,18 +349,13 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 source_language=source_language,
                 target_language=target_language,
             )
-            return merged.summary, [
-                {"source": t.source, "target": t.target}
-                for t in merged.terms
-            ]
+            return merged.summary, merged.terms
 
         # Single chunk - return as-is
         summary = chunk_summaries[0] if chunk_summaries else ""
-        all_terms: list[dict[str, str]] = []
-        for terms in chunk_terms:
-            all_terms.extend(terms)
+        terms = chunk_terms[0] if chunk_terms else {}
 
-        return summary, all_terms
+        return summary, terms
 
     async def _extract_chunk_with_semaphore(
         self,

@@ -1,0 +1,115 @@
+"""
+Dynamic input builders for LLM API calls.
+
+These functions build the input data that changes per request.
+Static instructions are kept separate for caching efficiency.
+"""
+
+from src.pipeline.models import Language, TermDict
+
+
+def _format_term_list(terms: TermDict, limit: int = 0) -> str:
+    items = list(terms.items())
+    if limit:
+        items = items[:limit]
+    return "\n".join(f"  - {source} -> {target}" for source, target in items)
+
+
+def build_chunk_extraction_input(
+    chunk_text: str,
+    source_language: Language,
+    target_language: Language,
+    existing_terms: TermDict | None = None,
+) -> str:
+    existing_section = ""
+    if existing_terms:
+        existing_section = (
+            f"\n\nAlready identified terms (maintain consistency):\n"
+            f"{_format_term_list(existing_terms)}"
+        )
+
+    return (
+        f"Source language: {source_language.value}\n"
+        f"Target language: {target_language.value}"
+        f"{existing_section}\n"
+        f"\nText to analyze:\n"
+        f"{chunk_text}"
+    )
+
+
+def build_meta_merge_input(
+    chunk_summaries: list[str],
+    chunk_terms: list[TermDict],
+    source_language: Language,
+    target_language: Language,
+) -> str:
+    summaries_section = "\n".join(
+        f"\nChunk {i}:\n{summary}"
+        for i, summary in enumerate(chunk_summaries, 1)
+    )
+
+    all_terms = _collect_chunk_terms(chunk_terms)
+    terms_section = ""
+    if all_terms:
+        term_lines = "\n".join(
+            f"  - {source} -> {targets[0]}" if len(targets) == 1
+            else f"  - {source} -> {' / '.join(targets)} (conflict)"
+            for source, targets in all_terms.items()
+        )
+        terms_section = f"\n\n--- Collected Terms ---\n{term_lines}"
+
+    return (
+        f"Source language: {source_language.value}\n"
+        f"Target language: {target_language.value}\n"
+        f"\n--- Chunk Summaries ---"
+        f"{summaries_section}"
+        f"{terms_section}"
+    )
+
+
+def build_translation_input(
+    unit_ids: list[str],
+    texts: list[str],
+    source_language: Language,
+    target_language: Language,
+    term_dictionary: TermDict,
+    context_summary: str,
+) -> str:
+    context_section = ""
+    if context_summary:
+        context_section = f"\n\nContext:\n{context_summary}"
+
+    terms_section = ""
+    if term_dictionary:
+        terms_section = (
+            f"\n\nTerm Dictionary (use these translations):\n"
+            f"{_format_term_list(term_dictionary, limit=100)}"
+        )
+
+    text_lines = "\n".join(
+        f"[{unit_id}] {text}" for unit_id, text in zip(unit_ids, texts)
+    )
+
+    return (
+        f"Translate from {source_language.value} to {target_language.value}."
+        f"{context_section}"
+        f"{terms_section}\n"
+        f"\n--- Texts to Translate ---\n"
+        f"(Each line: [unit_id] text)\n"
+        f"{text_lines}\n"
+        f"\nIMPORTANT: Preserve all placeholder tags ({{{{1}}}}, {{{{/1}}}}, {{{{2/}}}}, etc.) exactly."
+    )
+
+
+def _collect_chunk_terms(
+    chunk_terms: list[TermDict],
+) -> dict[str, list[str]]:
+    all_terms: dict[str, list[str]] = {}
+    for terms in chunk_terms:
+        for source, target in terms.items():
+            if source:
+                if source not in all_terms:
+                    all_terms[source] = []
+                if target and target not in all_terms[source]:
+                    all_terms[source].append(target)
+    return all_terms

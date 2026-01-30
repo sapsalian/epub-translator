@@ -19,7 +19,6 @@ from src.pipeline.models import (
     Language,
     PreprocessResult,
     TermDictionary,
-    TermMapping,
     TranslatedUnit,
     TranslationResult,
 )
@@ -50,7 +49,8 @@ def config(tmp_path):
         model="gpt-4o-mini",
         chunk_size=4000,
         batch_size=10,
-        max_concurrent=3,
+        preprocess_max_concurrent=3,
+        translation_max_concurrent=3,
     )
 
 
@@ -63,27 +63,16 @@ def mock_api_client():
     async def mock_extract_chunk(chunk_text, source_language, target_language, existing_terms=None):
         return ChunkResult(
             summary=f"Summary of chunk: {chunk_text[:50]}...",
-            terms=[
-                TermMapping(source="hello", target="안녕하세요"),
-                TermMapping(source="world", target="세계"),
-            ],
+            terms={"hello": "안녕하세요", "world": "세계"},
         )
 
     client.extract_chunk = AsyncMock(side_effect=mock_extract_chunk)
 
     # Mock merge_extractions
     async def mock_merge_extractions(chunk_summaries, chunk_terms, source_language, target_language):
-        merged_terms = []
-        seen = set()
-        for term_list in chunk_terms:
-            for t in term_list:
-                key = t.get("source") if isinstance(t, dict) else t.source
-                if key not in seen:
-                    seen.add(key)
-                    if isinstance(t, dict):
-                        merged_terms.append(TermMapping(source=t["source"], target=t["target"]))
-                    else:
-                        merged_terms.append(t)
+        merged_terms: dict[str, str] = {}
+        for terms in chunk_terms:
+            merged_terms.update(terms)
 
         return ChunkResult(
             summary="Merged summary: " + "; ".join(chunk_summaries[:3]),

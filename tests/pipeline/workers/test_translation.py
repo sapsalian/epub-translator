@@ -8,7 +8,6 @@ import pytest
 from src.pipeline.models import (
     Language,
     TermDictionary,
-    TermMapping,
     TextLocation,
     TextUnit,
     TranslatedUnit,
@@ -85,10 +84,7 @@ def sample_term_dictionary() -> TermDictionary:
     return TermDictionary(
         source_language=Language.ENGLISH,
         target_language=Language.KOREAN,
-        mappings=[
-            TermMapping(source="hello", target="안녕하세요"),
-            TermMapping(source="world", target="세계"),
-        ],
+        mappings={"hello": "안녕하세요", "world": "세계"},
     )
 
 

@@ -8,7 +8,7 @@ This enables easy swapping between different LLM providers (OpenAI, Anthropic, e
 from dataclasses import dataclass
 from typing import Protocol
 
-from src.pipeline.models import Language, TermMapping, TextUnit
+from src.pipeline.models import Language, TermDict, TextUnit
 
 
 @dataclass
@@ -16,7 +16,7 @@ class ChunkExtraction:
     """Result of extracting summary and terms from a text chunk."""
 
     summary: str
-    terms: list[TermMapping]
+    terms: TermDict
 
 
 @dataclass
@@ -24,7 +24,7 @@ class MergedExtraction:
     """Result of merging multiple chunk extractions."""
 
     summary: str
-    terms: list[TermMapping]
+    terms: TermDict
 
 
 class PreprocessClient(Protocol):
@@ -39,7 +39,7 @@ class PreprocessClient(Protocol):
         chunk_text: str,
         source_language: Language,
         target_language: Language,
-        existing_terms: dict[str, str] | None = None,
+        existing_terms: TermDict | None = None,
     ) -> ChunkExtraction:
         """
         Extract summary and terms from a text chunk.
@@ -58,7 +58,7 @@ class PreprocessClient(Protocol):
     async def merge_extractions(
         self,
         chunk_summaries: list[str],
-        chunk_terms: list[list[dict[str, str]]],
+        chunk_terms: list[TermDict],
         source_language: Language,
         target_language: Language,
     ) -> MergedExtraction:
@@ -67,7 +67,7 @@ class PreprocessClient(Protocol):
 
         Args:
             chunk_summaries: List of summaries from each chunk.
-            chunk_terms: List of term lists from each chunk.
+            chunk_terms: List of term dicts from each chunk (source -> target).
             source_language: Source language.
             target_language: Target language.
 
@@ -89,7 +89,7 @@ class TranslationClient(Protocol):
         text_units: list[TextUnit],
         source_language: Language,
         target_language: Language,
-        term_dictionary: dict[str, str],
+        term_dictionary: TermDict,
         context_summary: str,
     ) -> list[str]:
         """

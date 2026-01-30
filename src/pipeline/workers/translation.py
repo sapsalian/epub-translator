@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.pipeline.models import (
     Language,
+    TermDict,
     TermDictionary,
     TextUnit,
     TranslatedUnit,
@@ -63,7 +64,7 @@ class TranslationAPIClient(Protocol):
         text_units: list[TextUnit],
         source_language: Language,
         target_language: Language,
-        term_dictionary: dict[str, str],
+        term_dictionary: TermDict,
         context_summary: str,
     ) -> list[str]:
         """
@@ -180,10 +181,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
             )
 
         try:
-            # Convert term dictionary to dict format for API
-            term_dict = {
-                m.source: m.target for m in input_data.term_dictionary.mappings
-            }
+            term_dict = input_data.term_dictionary.mappings
 
             # Create batches
             batches = self._create_batches(task.text_units, batch_size)
@@ -225,7 +223,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         batches: list[list[TextUnit]],
         source_language: Language,
         target_language: Language,
-        term_dictionary: dict[str, str],
+        term_dictionary: TermDict,
         context_summary: str,
         semaphore: asyncio.Semaphore,
         max_empty_retries: int = DEFAULT_MAX_EMPTY_RETRIES,
@@ -274,7 +272,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         batch_index: int,
         source_language: Language,
         target_language: Language,
-        term_dictionary: dict[str, str],
+        term_dictionary: TermDict,
         context_summary: str,
         semaphore: asyncio.Semaphore,
         max_empty_retries: int = DEFAULT_MAX_EMPTY_RETRIES,

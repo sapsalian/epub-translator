@@ -9,7 +9,6 @@ from src.pipeline.models import (
     ExtractionResult,
     Language,
     PreprocessResult,
-    TermMapping,
     TextLocation,
     TextUnit,
     XhtmlExtraction,
@@ -35,17 +34,11 @@ def mock_api_client() -> AsyncMock:
     client = AsyncMock(spec=PreprocessAPIClient)
     client.extract_chunk.return_value = ChunkResult(
         summary="Chunk summary.",
-        terms=[
-            TermMapping(source="hello", target="안녕하세요"),
-            TermMapping(source="world", target="세계"),
-        ],
+        terms={"hello": "안녕하세요", "world": "세계"},
     )
     client.merge_extractions.return_value = ChunkResult(
         summary="Merged summary.",
-        terms=[
-            TermMapping(source="hello", target="안녕하세요"),
-            TermMapping(source="world", target="세계"),
-        ],
+        terms={"hello": "안녕하세요", "world": "세계"},
     )
     return client
 
@@ -477,22 +470,19 @@ class TestTermAccumulation:
             if call_count == 1:
                 return ChunkResult(
                     summary="First summary.",
-                    terms=[TermMapping(source="hello", target="안녕")],
+                    terms={"hello": "안녕"},
                 )
             else:
                 return ChunkResult(
                     summary="Second summary.",
-                    terms=[TermMapping(source="world", target="세계")],
+                    terms={"world": "세계"},
                 )
 
         mock_client = AsyncMock(spec=PreprocessAPIClient)
         mock_client.extract_chunk.side_effect = mock_extract_chunk
         mock_client.merge_extractions.return_value = ChunkResult(
             summary="Merged summary.",
-            terms=[
-                TermMapping(source="hello", target="안녕"),
-                TermMapping(source="world", target="세계"),
-            ],
+            terms={"hello": "안녕", "world": "세계"},
         )
 
         extraction = ExtractionResult(
@@ -525,9 +515,8 @@ class TestTermAccumulation:
         assert mock_client.extract_chunk.call_count == 2
         # Final result should include terms from both XHTMLs (via merge)
         assert len(result.term_dictionary.mappings) == 2
-        term_sources = [m.source for m in result.term_dictionary.mappings]
-        assert "hello" in term_sources
-        assert "world" in term_sources
+        assert "hello" in result.term_dictionary.mappings
+        assert "world" in result.term_dictionary.mappings
 
 
 # =============================================================================
