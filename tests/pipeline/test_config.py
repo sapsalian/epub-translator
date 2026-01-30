@@ -31,8 +31,8 @@ class TestPipelineConfig:
         assert config.model == "gpt-4.1-mini"
         assert config.chunk_size == 4000
         assert config.batch_size == 20
-        assert config.preprocess_max_concurrent == 10
-        assert config.translation_max_concurrent == 5
+        assert config.preprocess_max_concurrent == 20
+        assert config.translation_max_concurrent == 20
         assert config.max_retries == 3
         assert config.base_delay == 1.0
         assert config.output_dir == Path("./output")
@@ -81,8 +81,8 @@ class TestPipelineConfigFromEnv:
                 target_language=Language.KOREAN,
             )
             assert config.model == "gpt-4.1-mini"
-            assert config.preprocess_max_concurrent == 10
-            assert config.translation_max_concurrent == 5
+            assert config.preprocess_max_concurrent == 20
+            assert config.translation_max_concurrent == 20
 
     def test_from_env_model_override(self):
         """PIPELINE_MODEL overrides model."""
@@ -144,7 +144,7 @@ class TestPipelineConfigFromEnv:
                 target_language=Language.KOREAN,
             )
             # Should use default value
-            assert config.translation_max_concurrent == 5
+            assert config.translation_max_concurrent == 20
 
     def test_from_env_kwargs_override_env(self):
         """Explicit kwargs take precedence over env vars."""

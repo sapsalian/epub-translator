@@ -63,11 +63,11 @@ class PipelineConfig(BaseModel):
 
     # Concurrency settings
     preprocess_max_concurrent: int = Field(
-        default=10,
+        default=20,
         description="Maximum concurrent API calls for preprocessing",
     )
     translation_max_concurrent: int = Field(
-        default=5,
+        default=20,
         description="Maximum concurrent API calls for translation",
     )
 
