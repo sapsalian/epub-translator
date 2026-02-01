@@ -57,8 +57,8 @@ class PipelineConfig(BaseModel):
 
     # Translation settings
     batch_size: int = Field(
-        default=20,
-        description="Number of text units per translation API call",
+        default=4000,
+        description="Maximum characters per translation API call",
     )
 
     # Concurrency settings

@@ -30,7 +30,7 @@ class TestPipelineConfig:
         )
         assert config.model == "gpt-4.1-mini"
         assert config.chunk_size == 4000
-        assert config.batch_size == 20
+        assert config.batch_size == 4000
         assert config.preprocess_max_concurrent == 20
         assert config.translation_max_concurrent == 20
         assert config.max_retries == 3

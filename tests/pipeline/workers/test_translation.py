@@ -281,25 +281,26 @@ class TestTranslation:
 class TestBatching:
     """Tests for batching functionality."""
 
-    def test_creates_correct_batches(self, worker: TranslationWorker):
-        """Batches are created correctly."""
+    def test_creates_batches_by_character_count(self, worker: TranslationWorker):
+        """Batches are split by character count."""
         units = [
             TextUnit(
                 unit_id=f"unit-{i:03d}",
                 location=TextLocation(xhtml_path="test.xhtml", xpath=f"/p[{i}]"),
                 source_text=f"Text {i}",
-                tagged_text=f"Text {i}",
+                tagged_text="A" * 100,  # 100 chars each
                 inner_tags=[],
             )
             for i in range(5)
         ]
 
-        batches = worker._create_batches(units, batch_size=2)
+        # batch_size=250 chars → 2 units (200) fit, 3rd (300) overflows
+        batches = worker._create_batches(units, batch_size=250)
 
         assert len(batches) == 3
-        assert len(batches[0]) == 2
-        assert len(batches[1]) == 2
-        assert len(batches[2]) == 1
+        assert len(batches[0]) == 2  # 200 chars
+        assert len(batches[1]) == 2  # 200 chars
+        assert len(batches[2]) == 1  # 100 chars
 
     def test_single_batch_for_small_input(
         self,
@@ -310,7 +311,7 @@ class TestBatching:
         """Small input results in single API call."""
         asyncio.run(worker.process(translation_input))
 
-        # 2 units with default batch_size=20 should be single call
+        # 2 short units with default batch_size=4000 should be single call
         assert mock_api_client.translate.call_count == 1
 
     def test_multiple_batches_for_large_input(
@@ -318,17 +319,17 @@ class TestBatching:
         mock_api_client: AsyncMock,
         sample_term_dictionary: TermDictionary,
     ):
-        """Large input is split into multiple batches."""
-        # Create 25 text units
+        """Large input is split into multiple batches by character count."""
+        # Create 10 text units, each 100 chars
         units = [
             TextUnit(
                 unit_id=f"unit-{i:03d}",
                 location=TextLocation(xhtml_path="test.xhtml", xpath=f"/p[{i}]"),
                 source_text=f"Text {i}",
-                tagged_text=f"Text {i}",
+                tagged_text="A" * 100,
                 inner_tags=[],
             )
-            for i in range(25)
+            for i in range(10)
         ]
 
         task = TranslationTask(
@@ -341,15 +342,15 @@ class TestBatching:
             task=task,
             source_language=Language.ENGLISH,
             term_dictionary=sample_term_dictionary,
-            batch_size=10,  # Force 3 batches
+            batch_size=350,  # 3 units per batch (300 chars), 4th overflows
         )
         worker = TranslationWorker(api_client=mock_api_client)
 
         result = asyncio.run(worker.process(input_data))
 
-        # 25 units / 10 batch_size = 3 batches
-        assert mock_api_client.translate.call_count == 3
-        assert len(result.translated_units) == 25
+        # 10 units × 100 chars, batch_size=350 → batches of 3,3,3,1
+        assert mock_api_client.translate.call_count == 4
+        assert len(result.translated_units) == 10
 
 
 # =============================================================================
@@ -380,13 +381,13 @@ class TestConcurrency:
         mock_client = AsyncMock(spec=TranslationAPIClient)
         mock_client.translate.side_effect = mock_translate
 
-        # Create 20 units with batch_size=2 (10 batches) and max_concurrent=3
+        # Create 20 units (50 chars each), batch_size=120 → ~2 units/batch → 10 batches
         units = [
             TextUnit(
                 unit_id=f"unit-{i:03d}",
                 location=TextLocation(xhtml_path="test.xhtml", xpath=f"/p[{i}]"),
                 source_text=f"Text {i}",
-                tagged_text=f"Text {i}",
+                tagged_text="A" * 50,
                 inner_tags=[],
             )
             for i in range(20)
@@ -402,7 +403,7 @@ class TestConcurrency:
             task=task,
             source_language=Language.ENGLISH,
             term_dictionary=sample_term_dictionary,
-            batch_size=2,
+            batch_size=120,  # 2 units (100 chars) per batch → 10 batches
             max_concurrent=3,
         )
         worker = TranslationWorker(api_client=mock_client)
@@ -457,7 +458,7 @@ class TestErrorHandling:
                 unit_id=f"unit-{i:03d}",
                 location=TextLocation(xhtml_path="test.xhtml", xpath=f"/p[{i}]"),
                 source_text=f"Text {i}",
-                tagged_text=f"Text {i}",
+                tagged_text="A" * 100,
                 inner_tags=[],
             )
             for i in range(10)
@@ -473,7 +474,7 @@ class TestErrorHandling:
             task=task,
             source_language=Language.ENGLISH,
             term_dictionary=sample_term_dictionary,
-            batch_size=3,
+            batch_size=250,  # ~2 units per batch → multiple batches
         )
         worker = TranslationWorker(api_client=mock_client)
 

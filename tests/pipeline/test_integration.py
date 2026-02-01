@@ -48,7 +48,7 @@ def config(tmp_path):
         checkpoint_dir=tmp_path / "checkpoints",
         model="gpt-4o-mini",
         chunk_size=4000,
-        batch_size=10,
+        batch_size=2000,
         preprocess_max_concurrent=3,
         translation_max_concurrent=3,
     )

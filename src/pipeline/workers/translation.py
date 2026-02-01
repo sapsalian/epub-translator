@@ -34,8 +34,8 @@ from .base import AsyncWorker, TranslationError
 logger = logging.getLogger(__name__)
 
 
-# Default batch size for translation API calls
-DEFAULT_BATCH_SIZE = 20
+# Default batch size for translation API calls (characters)
+DEFAULT_BATCH_SIZE = 4000
 
 # Default maximum concurrent API calls
 DEFAULT_MAX_CONCURRENT = 5
@@ -106,7 +106,7 @@ class TranslationInput(BaseModel):
     )
     batch_size: int = Field(
         default=DEFAULT_BATCH_SIZE,
-        description="Number of text units to translate per API call",
+        description="Maximum characters per translation API call",
     )
     max_concurrent: int = Field(
         default=DEFAULT_MAX_CONCURRENT,
@@ -373,16 +373,35 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         self, text_units: list[TextUnit], batch_size: int
     ) -> list[list[TextUnit]]:
         """
-        Split text units into batches.
+        Split text units into batches by character count.
+
+        Accumulates text units until adding the next would exceed batch_size
+        characters. Each unit always gets included in some batch (a single
+        unit larger than batch_size forms its own batch).
 
         Args:
             text_units: All text units to translate.
-            batch_size: Maximum units per batch.
+            batch_size: Maximum characters per batch.
 
         Returns:
             List of batches.
         """
         batches: list[list[TextUnit]] = []
-        for i in range(0, len(text_units), batch_size):
-            batches.append(text_units[i : i + batch_size])
+        current_batch: list[TextUnit] = []
+        current_size = 0
+
+        for unit in text_units:
+            unit_size = len(unit.tagged_text)
+
+            if current_size + unit_size > batch_size and current_batch:
+                batches.append(current_batch)
+                current_batch = [unit]
+                current_size = unit_size
+            else:
+                current_batch.append(unit)
+                current_size += unit_size
+
+        if current_batch:
+            batches.append(current_batch)
+
         return batches
