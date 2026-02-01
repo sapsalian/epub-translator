@@ -388,7 +388,8 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         """
         Split text into chunks of approximately chunk_size characters.
 
-        Tries to split at paragraph boundaries when possible.
+        Splits at line boundaries since raw_text uses single newlines
+        between extracted elements.
 
         Args:
             text: Text to split.
@@ -404,25 +405,23 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
             return [text]
 
         chunks: list[str] = []
-        paragraphs = text.split("\n\n")
+        lines = text.split("\n")
 
         current_chunk: list[str] = []
         current_size = 0
 
-        for para in paragraphs:
-            para_size = len(para) + 2  # +2 for \n\n
+        for line in lines:
+            line_size = len(line) + 1  # +1 for \n
 
-            if current_size + para_size > chunk_size and current_chunk:
-                # Save current chunk and start new one
-                chunks.append("\n\n".join(current_chunk))
-                current_chunk = [para]
-                current_size = para_size
+            if current_size + line_size > chunk_size and current_chunk:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = [line]
+                current_size = line_size
             else:
-                current_chunk.append(para)
-                current_size += para_size
+                current_chunk.append(line)
+                current_size += line_size
 
-        # Don't forget the last chunk
         if current_chunk:
-            chunks.append("\n\n".join(current_chunk))
+            chunks.append("\n".join(current_chunk))
 
         return chunks

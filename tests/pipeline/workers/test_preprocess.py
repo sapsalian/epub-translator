@@ -383,28 +383,26 @@ class TestChunking:
 
     def test_split_into_chunks_large_text(self, worker: PreprocessWorker):
         """Large text is split into multiple chunks."""
-        # Create text larger than chunk_size
-        paragraphs = ["Paragraph " + str(i) + "." * 100 for i in range(10)]
-        text = "\n\n".join(paragraphs)
+        # Create text larger than chunk_size (lines joined by \n like raw_text)
+        lines = ["Line " + str(i) + "." * 100 for i in range(10)]
+        text = "\n".join(lines)
 
         chunks = worker._split_into_chunks(text, chunk_size=300)
 
         assert len(chunks) > 1
-        # Each chunk should be approximately chunk_size or less
         for chunk in chunks:
-            assert len(chunk) <= 500  # Some margin for paragraph boundaries
+            assert len(chunk) <= 400  # Some margin for line boundaries
 
-    def test_split_into_chunks_respects_paragraph_boundaries(
+    def test_split_into_chunks_respects_line_boundaries(
         self, worker: PreprocessWorker
     ):
-        """Chunks respect paragraph boundaries."""
-        text = "Para 1.\n\nPara 2.\n\nPara 3."
-        chunks = worker._split_into_chunks(text, chunk_size=20)
+        """Chunks respect line boundaries."""
+        text = "Line 1.\nLine 2.\nLine 3."
+        chunks = worker._split_into_chunks(text, chunk_size=18)
 
-        # Should split at paragraph boundaries
+        # Should split at line boundaries
         for chunk in chunks:
-            # Chunks shouldn't have partial paragraphs (split mid-sentence)
-            assert chunk.startswith("Para")
+            assert chunk.startswith("Line")
 
     def test_split_into_chunks_empty_text(self, worker: PreprocessWorker):
         """Empty text returns empty list."""
@@ -419,8 +417,8 @@ class TestChunking:
         mock_api_client: AsyncMock,
     ):
         """Large XHTML text triggers multiple extract_chunk calls."""
-        # Create large text that will be split
-        large_text = "\n\n".join(["Paragraph " + str(i) + "." * 500 for i in range(10)])
+        # Create large text that will be split (lines joined by \n like raw_text)
+        large_text = "\n".join(["Line " + str(i) + "." * 500 for i in range(10)])
 
         extraction = ExtractionResult(
             epub_id="large",
