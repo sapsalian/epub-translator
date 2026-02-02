@@ -444,21 +444,16 @@ class TestLogging:
         assert "Unknown placeholder index 99" in caplog.text
         assert "{{99}}" in caplog.text
 
-    def test_xml_syntax_error_logs_warning(self, handler: InnerTagHandler, caplog):
-        """XML syntax error during restore_to_element logs a warning."""
-        # Intentionally create invalid XML by having unclosed tags
+    def test_unmatched_placeholder_filtered_before_restore(self, handler: InnerTagHandler):
+        """Unmatched placeholders are filtered out before XML restoration."""
         inner_tags = [InnerTag(index=1, tag_name="b", attributes={}, is_self_closing=False)]
 
-        with caplog.at_level(logging.WARNING):
-            # Missing closing tag - will cause XML syntax error
-            # The handler will escape and create valid output
-            element = handler.restore_to_element("p", "Hello {{1}}world!", inner_tags)
+        # Missing closing tag {{/1}} - _filter_invalid_placeholders removes {{1}}
+        element = handler.restore_to_element("p", "Hello {{1}}world!", inner_tags)
 
-        # Should have logged a warning about XML parsing failure
-        assert "XML parsing failed" in caplog.text
-        # Element should still be created (with escaped content)
         assert element is not None
         assert element.tag == "p"
+        assert element.text == "Hello world!"
 
     def test_multiple_unknown_placeholders_log_each(self, handler: InnerTagHandler, caplog):
         """Each unknown placeholder is logged separately."""

@@ -383,7 +383,9 @@ class InnerTagHandler:
         Returns:
             lxml Element with restored structure.
         """
-        restored_xml = self.restore(translated_text, inner_tags, nsmap)
+        cleaned_text = self._filter_invalid_placeholders(translated_text, inner_tags)
+        escaped_text = self._escape_text_outside_placeholders(cleaned_text)
+        restored_xml = self.restore(escaped_text, inner_tags, nsmap)
         attr_str = self._build_attr_string(parent_attributes) if parent_attributes else ""
         full_xml = f"<{parent_tag}{attr_str}>{restored_xml}</{parent_tag}>"
 
@@ -391,15 +393,95 @@ class InnerTagHandler:
             return etree.fromstring(full_xml.encode("utf-8"))
         except etree.XMLSyntaxError as e:
             logger.warning(
-                "XML parsing failed for restored content, escaping special characters. "
-                "Error: %s. Content: %s",
+                "XML parsing failed for restored content. Error: %s. Content: %s",
                 e,
                 restored_xml[:200] + "..." if len(restored_xml) > 200 else restored_xml,
             )
-            # Fallback: escape content if parsing fails
-            escaped = self._escape_xml_content(restored_xml)
-            fallback_xml = f"<{parent_tag}{attr_str}>{escaped}</{parent_tag}>"
-            return etree.fromstring(fallback_xml.encode("utf-8"))
+            raise
+
+    def _filter_invalid_placeholders(
+        self,
+        text: str,
+        inner_tags: list[InnerTag],
+    ) -> str:
+        """
+        Remove placeholders that don't have a valid matching pair.
+
+        Rules:
+        - Only top-of-stack closing tags are considered valid matches.
+        - Unknown indices are removed.
+        - Unmatched opening/closing placeholders are removed.
+        """
+        if not inner_tags:
+            return text
+
+        tag_map = {tag.index: tag for tag in inner_tags}
+        matches: list[re.Match] = list(TOKEN_PATTERN.finditer(text))
+        keep_flags = [False] * len(matches)
+        stack: list[tuple[int, int]] = []
+
+        for i, match in enumerate(matches):
+            closing_prefix = match.group(1)
+            tag_num = int(match.group(2))
+            self_closing_suffix = match.group(3)
+
+            if tag_num not in tag_map:
+                continue
+
+            if self_closing_suffix and not closing_prefix:
+                keep_flags[i] = True
+                continue
+
+            if closing_prefix:
+                if stack and stack[-1][0] == tag_num:
+                    _, open_index = stack.pop()
+                    keep_flags[open_index] = True
+                    keep_flags[i] = True
+                continue
+
+            # Opening tag
+            stack.append((tag_num, i))
+
+        # Any openings left in the stack are unmatched; keep_flags stays False
+        output_parts: list[str] = []
+        last_index = 0
+        for keep, match in zip(keep_flags, matches):
+            start, end = match.span()
+            if start > last_index:
+                output_parts.append(text[last_index:start])
+            if keep:
+                output_parts.append(match.group(0))
+            last_index = end
+
+        if last_index < len(text):
+            output_parts.append(text[last_index:])
+
+        return "".join(output_parts)
+
+    def _escape_text_outside_placeholders(self, text: str) -> str:
+        """
+        Escape XML special chars outside placeholders to avoid parser errors.
+        """
+        parts: list[str] = []
+        last_index = 0
+        for match in TOKEN_PATTERN.finditer(text):
+            start, end = match.span()
+            if start > last_index:
+                parts.append(self._escape_xml_text(text[last_index:start]))
+            parts.append(match.group(0))
+            last_index = end
+
+        if last_index < len(text):
+            parts.append(self._escape_xml_text(text[last_index:]))
+
+        return "".join(parts)
+
+    def _escape_xml_text(self, text: str) -> str:
+        """
+        Escape &, <, > in text while preserving existing entities.
+        """
+        text = re.sub(r"&(?![a-zA-Z]+;|#\d+;|#x[0-9a-fA-F]+;)", "&amp;", text)
+        return text.replace("<", "&lt;").replace(">", "&gt;")
 
     def _escape_xml_content(self, content: str) -> str:
         """
