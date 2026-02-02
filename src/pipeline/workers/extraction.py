@@ -51,7 +51,7 @@ class ExtractionInput(BaseModel):
     epub_path: Path = Field(description="Path to the EPUB file")
     source_language: Language = Field(description="Source language of the EPUB")
     matcher_strategy: MatcherStrategy = Field(
-        default=MatcherStrategy.ALL_ELEMENTS,
+        default=MatcherStrategy.TEXT_EMERGENCE,
         description="Strategy for matching elements to translate",
     )
 

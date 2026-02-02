@@ -59,13 +59,13 @@ class TestExtractionInput:
     """Tests for ExtractionInput model."""
 
     def test_default_matcher_strategy(self, sample_epub_path: Path):
-        """Default matcher strategy is ALL_ELEMENTS."""
+        """Default matcher strategy is TEXT_EMERGENCE."""
         input_data = ExtractionInput(
             epub_id="test",
             epub_path=sample_epub_path,
             source_language=Language.ENGLISH,
         )
-        assert input_data.matcher_strategy == MatcherStrategy.ALL_ELEMENTS
+        assert input_data.matcher_strategy == MatcherStrategy.TEXT_EMERGENCE
 
     def test_custom_matcher_strategy(self, sample_epub_path: Path):
         """Can specify custom matcher strategy."""
