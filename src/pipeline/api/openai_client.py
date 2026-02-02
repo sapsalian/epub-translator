@@ -4,12 +4,11 @@ OpenAI API client implementation.
 Provides LLMClient implementation using OpenAI's Responses API with structured outputs.
 """
 
+import json
 import logging
 import os
-from typing import TypeVar
 
 from openai import AsyncOpenAI, APIError, RateLimitError as OpenAIRateLimitError
-from pydantic import BaseModel
 
 from src.pipeline.models import Language, TermDict, TextUnit
 
@@ -26,11 +25,9 @@ from .retry import (
     TransientAPIError,
     with_retry,
 )
-from .schemas import ChunkExtractionOutput, MergeOutput, TranslationOutput
+from .schemas import CHUNK_EXTRACTION_SCHEMA, MERGE_SCHEMA, TRANSLATION_SCHEMA
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T", bound=BaseModel)
 
 
 class OpenAIClient:
@@ -78,12 +75,14 @@ class OpenAIClient:
         result = await self._call_structured(
             instructions=CHUNK_EXTRACTION,
             input_text=input_text,
-            output_type=ChunkExtractionOutput,
+            schema=CHUNK_EXTRACTION_SCHEMA,
         )
 
+        terms = {e["source"]: e["target"] for e in result.get("terms", [])}
+
         return ChunkExtraction(
-            summary=result.summary,
-            terms=result.terms,
+            summary=result["summary"],
+            terms=terms,
         )
 
     async def merge_extractions(
@@ -113,12 +112,14 @@ class OpenAIClient:
         result = await self._call_structured(
             instructions=META_MERGE,
             input_text=input_text,
-            output_type=MergeOutput,
+            schema=MERGE_SCHEMA,
         )
 
+        terms = {e["source"]: e["target"] for e in result.get("terms", [])}
+
         return MergedExtraction(
-            summary=result.summary,
-            terms=result.terms,
+            summary=result["summary"],
+            terms=terms,
         )
 
     async def translate(
@@ -148,14 +149,17 @@ class OpenAIClient:
         result = await self._call_structured(
             instructions=TRANSLATION,
             input_text=input_text,
-            output_type=TranslationOutput,
+            schema=TRANSLATION_SCHEMA,
         )
 
+        translations_map = {
+            e["unit_id"]: e["text"] for e in result.get("translations", [])
+        }
         translations = []
         missing_ids = []
         for unit_id in unit_ids:
-            if unit_id in result.translations:
-                translations.append(result.translations[unit_id])
+            if unit_id in translations_map:
+                translations.append(translations_map[unit_id])
             else:
                 translations.append("")
                 missing_ids.append(unit_id)
@@ -169,35 +173,33 @@ class OpenAIClient:
         self,
         instructions: str,
         input_text: str,
-        output_type: type[T],
-    ) -> T:
+        schema: dict,
+    ) -> dict:
         """
         Make a structured API call using OpenAI Responses API.
 
         Args:
             instructions: Static instructions (cached by API).
             input_text: Dynamic input data.
-            output_type: Pydantic model class for structured output.
+            schema: JSON schema dict for structured output format.
 
         Returns:
-            Parsed Pydantic model instance.
+            Parsed JSON response as dict.
         """
 
         @with_retry(
             config=self._retry_config,
             retryable_exceptions=(RateLimitError, TransientAPIError),
         )
-        async def _make_request() -> T:
+        async def _make_request() -> dict:
             try:
-                response = await self._client.responses.parse(
+                response = await self._client.responses.create(
                     model=self._model,
                     instructions=instructions,
                     input=input_text,
-                    text_format=output_type,
+                    text={"format": schema},
                 )
-                if response.output_parsed is None:
-                    raise ValueError("Structured output parsing returned None")
-                return response.output_parsed
+                return json.loads(response.output_text)
             except OpenAIRateLimitError as e:
                 raise RateLimitError(str(e)) from e
             except APIError as e:

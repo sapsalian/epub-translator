@@ -1,38 +1,89 @@
 """
-Pydantic schemas for structured API outputs.
+JSON schemas for OpenAI Responses API structured outputs.
 
-These models are used with OpenAI's Responses API to ensure
-type-safe, validated responses from the LLM.
+Uses array-of-objects instead of dynamic-key dicts because OpenAI's
+json_schema format requires additionalProperties: false on all objects,
+making dict[str, str] (additionalProperties: {"type": "string"}) impossible.
 """
 
-from pydantic import BaseModel, Field
+_TERM_ENTRY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "source": {"type": "string", "description": "Source language term"},
+        "target": {"type": "string", "description": "Target language translation"},
+    },
+    "required": ["source", "target"],
+    "additionalProperties": False,
+}
 
-from src.pipeline.models import TermDict
+_TRANSLATION_ENTRY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "unit_id": {"type": "string", "description": "Text unit identifier"},
+        "text": {"type": "string", "description": "Translated text"},
+    },
+    "required": ["unit_id", "text"],
+    "additionalProperties": False,
+}
 
+CHUNK_EXTRACTION_SCHEMA: dict = {
+    "type": "json_schema",
+    "name": "ChunkExtractionOutput",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "Brief summary of the chunk content (2-3 sentences)",
+            },
+            "terms": {
+                "type": "array",
+                "description": "Key terms with target language translations",
+                "items": _TERM_ENTRY_SCHEMA,
+            },
+        },
+        "required": ["summary", "terms"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
 
-class ChunkExtractionOutput(BaseModel):
-    """Output schema for chunk extraction (summary + terms)."""
+MERGE_SCHEMA: dict = {
+    "type": "json_schema",
+    "name": "MergeOutput",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "Combined summary of all chunks (3-5 sentences)",
+            },
+            "terms": {
+                "type": "array",
+                "description": "Consolidated term dictionary",
+                "items": _TERM_ENTRY_SCHEMA,
+            },
+        },
+        "required": ["summary", "terms"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
 
-    summary: str = Field(description="Brief summary of the chunk content (2-3 sentences)")
-    terms: TermDict = Field(
-        default_factory=dict,
-        description="Term dictionary mapping source terms to target translations (proper nouns, technical terms only)",
-    )
-
-
-class MergeOutput(BaseModel):
-    """Output schema for merging multiple chunk extractions."""
-
-    summary: str = Field(description="Combined summary of all chunks (3-5 sentences)")
-    terms: TermDict = Field(
-        default_factory=dict,
-        description="Merged and curated term dictionary (source -> target, common words filtered out)",
-    )
-
-
-class TranslationOutput(BaseModel):
-    """Output schema for translation responses."""
-
-    translations: dict[str, str] = Field(
-        description="Mapping of unit_id to translated text"
-    )
+TRANSLATION_SCHEMA: dict = {
+    "type": "json_schema",
+    "name": "TranslationOutput",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "translations": {
+                "type": "array",
+                "description": "Translated text units",
+                "items": _TRANSLATION_ENTRY_SCHEMA,
+            },
+        },
+        "required": ["translations"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}

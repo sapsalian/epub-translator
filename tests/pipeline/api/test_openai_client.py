@@ -1,6 +1,7 @@
 """Tests for OpenAI client."""
 
 import asyncio
+import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,11 +9,6 @@ import pytest
 
 from src.pipeline.api.openai_client import OpenAIClient
 from src.pipeline.api.retry import RetryConfig
-from src.pipeline.api.schemas import (
-    ChunkExtractionOutput,
-    MergeOutput,
-    TranslationOutput,
-)
 from src.pipeline.models import Language, TextLocation, TextUnit
 
 
@@ -56,10 +52,10 @@ def sample_text_units():
     ]
 
 
-def _mock_parse_response(output_parsed):
-    """Create a mock Responses API parse response."""
+def _mock_create_response(output_dict: dict) -> MagicMock:
+    """Create a mock Responses API create response."""
     mock_response = MagicMock()
-    mock_response.output_parsed = output_parsed
+    mock_response.output_text = json.dumps(output_dict)
     return mock_response
 
 
@@ -124,12 +120,14 @@ class TestExtractChunk:
 
     def test_parses_extraction_response(self, client, mock_openai):
         """Parses structured extraction response."""
-        parsed_output = ChunkExtractionOutput(
-            summary="A story about greeting.",
-            terms={"hello": "안녕하세요", "world": "세계"},
-        )
-        mock_openai.return_value.responses.parse = AsyncMock(
-            return_value=_mock_parse_response(parsed_output)
+        mock_openai.return_value.responses.create = AsyncMock(
+            return_value=_mock_create_response({
+                "summary": "A story about greeting.",
+                "terms": [
+                    {"source": "hello", "target": "안녕하세요"},
+                    {"source": "world", "target": "세계"},
+                ],
+            })
         )
 
         result = asyncio.run(
@@ -147,12 +145,11 @@ class TestExtractChunk:
 
     def test_with_existing_terms(self, client, mock_openai):
         """Passes existing terms for consistency."""
-        parsed_output = ChunkExtractionOutput(
-            summary="Continuing the story.",
-            terms={"new_term": "새 용어"},
-        )
-        mock_openai.return_value.responses.parse = AsyncMock(
-            return_value=_mock_parse_response(parsed_output)
+        mock_openai.return_value.responses.create = AsyncMock(
+            return_value=_mock_create_response({
+                "summary": "Continuing the story.",
+                "terms": [{"source": "new_term", "target": "새 용어"}],
+            })
         )
 
         result = asyncio.run(
@@ -207,12 +204,14 @@ class TestMergeExtractions:
 
     def test_merges_multiple_chunks(self, client, mock_openai):
         """Merges multiple chunks via API."""
-        parsed_output = MergeOutput(
-            summary="Combined summary of all chunks.",
-            terms={"term1": "용어1", "term2": "용어2"},
-        )
-        mock_openai.return_value.responses.parse = AsyncMock(
-            return_value=_mock_parse_response(parsed_output)
+        mock_openai.return_value.responses.create = AsyncMock(
+            return_value=_mock_create_response({
+                "summary": "Combined summary of all chunks.",
+                "terms": [
+                    {"source": "term1", "target": "용어1"},
+                    {"source": "term2", "target": "용어2"},
+                ],
+            })
         )
 
         result = asyncio.run(
@@ -257,14 +256,13 @@ class TestTranslate:
         self, client, mock_openai, sample_text_units
     ):
         """Parses structured translation response."""
-        parsed_output = TranslationOutput(
-            translations={
-                "unit-001": "안녕 {{1}}세상{{/1}}",
-                "unit-002": "안녕히 가세요",
-            }
-        )
-        mock_openai.return_value.responses.parse = AsyncMock(
-            return_value=_mock_parse_response(parsed_output)
+        mock_openai.return_value.responses.create = AsyncMock(
+            return_value=_mock_create_response({
+                "translations": [
+                    {"unit_id": "unit-001", "text": "안녕 {{1}}세상{{/1}}"},
+                    {"unit_id": "unit-002", "text": "안녕히 가세요"},
+                ],
+            })
         )
 
         result = asyncio.run(
@@ -283,14 +281,13 @@ class TestTranslate:
 
     def test_handles_missing_translation(self, client, mock_openai, sample_text_units):
         """Handles missing translation for some unit IDs."""
-        parsed_output = TranslationOutput(
-            translations={
-                "unit-001": "번역된 텍스트",
-                # unit-002 is missing
-            }
-        )
-        mock_openai.return_value.responses.parse = AsyncMock(
-            return_value=_mock_parse_response(parsed_output)
+        mock_openai.return_value.responses.create = AsyncMock(
+            return_value=_mock_create_response({
+                "translations": [
+                    {"unit_id": "unit-001", "text": "번역된 텍스트"},
+                    # unit-002 is missing
+                ],
+            })
         )
 
         result = asyncio.run(
@@ -306,27 +303,3 @@ class TestTranslate:
         assert len(result) == 2
         assert result[0] == "번역된 텍스트"
         assert result[1] == ""  # Missing ID returns empty string
-
-
-# =============================================================================
-# Structured Output Error Handling Tests
-# =============================================================================
-
-
-class TestStructuredOutputErrors:
-    """Tests for error handling in structured output parsing."""
-
-    def test_none_output_raises(self, client, mock_openai):
-        """Raises ValueError when output_parsed is None."""
-        mock_openai.return_value.responses.parse = AsyncMock(
-            return_value=_mock_parse_response(None)
-        )
-
-        with pytest.raises(ValueError, match="Structured output parsing returned None"):
-            asyncio.run(
-                client.extract_chunk(
-                    chunk_text="Some text.",
-                    source_language=Language.ENGLISH,
-                    target_language=Language.KOREAN,
-                )
-            )
