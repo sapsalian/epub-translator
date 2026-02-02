@@ -66,17 +66,11 @@ class TextEmergenceMatcher(ElementMatcher):
         return self._has_direct_text(elem)
 
     def _has_ancestor_text(self, elem: etree._Element) -> bool:
-        elem_id = id(elem)
-        if elem_id in self._cache:
-            return self._cache[elem_id]
-
         parent = elem.getparent()
         if parent is None:
-            self._cache[elem_id] = False
             return False
 
         result = self._has_ancestor_text(parent) or self._has_direct_text(parent)
-        self._cache[elem_id] = result
         return result
 
     def _has_direct_text(self, elem: etree._Element) -> bool:
