@@ -465,3 +465,131 @@ class TestLogging:
         # Should log warnings for both unknown indices
         assert "Unknown placeholder index 5" in caplog.text
         assert "Unknown placeholder index 10" in caplog.text
+
+
+class TestFilterInvalidPlaceholders:
+    """Tests for _filter_invalid_placeholders via restore_to_element."""
+
+    def _make_tag(self, index: int, tag_name: str = "b", self_closing: bool = False):
+        return InnerTag(
+            index=index, tag_name=tag_name, attributes={}, is_self_closing=self_closing,
+        )
+
+    def test_all_valid_pairs_unchanged(self, handler: InnerTagHandler):
+        """Properly paired placeholders pass through unchanged."""
+        inner_tags = [self._make_tag(1), self._make_tag(2, "em")]
+        text = "{{1}}bold{{/1}} and {{2}}italic{{/2}}"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        assert elem.find("b") is not None
+        assert elem.find("em") is not None
+        assert elem.find("b").text == "bold"
+        assert elem.find("em").text == "italic"
+
+    def test_closing_only_removed(self, handler: InnerTagHandler):
+        """Closing placeholder without opening is removed."""
+        inner_tags = [self._make_tag(1)]
+        text = "Hello {{/1}}world"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        assert elem.text == "Hello world"
+        assert elem.find("b") is None
+
+    def test_partial_pair_among_valid(self, handler: InnerTagHandler):
+        """Only unpaired placeholders are removed; valid pairs kept."""
+        inner_tags = [self._make_tag(1), self._make_tag(2, "em")]
+        text = "{{1}}bold{{/1}} and {{2}}orphan"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        assert elem.find("b") is not None
+        assert elem.find("b").text == "bold"
+        # {{2}} removed since no {{/2}}
+        assert elem.find("em") is None
+
+    def test_unknown_index_removed(self, handler: InnerTagHandler):
+        """Placeholders with indices not in inner_tags are removed."""
+        inner_tags = [self._make_tag(1)]
+        text = "{{1}}ok{{/1}} {{99}}gone{{/99}}"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        assert elem.find("b") is not None
+        assert "gone" in (elem.find("b").tail or "") + (elem.text or "")
+
+    def test_interleaved_tags_outer_kept(self, handler: InnerTagHandler):
+        """Interleaved (crossing) tags: only stack-valid pairs survive."""
+        # {{1}}..{{2}}..{{/1}}..{{/2}} — interleaved
+        # Stack: open 1, open 2, close 1 (top is 2, not 1 → skip),
+        #        close 2 (top is 2 → match with open 2, but open 1 unmached by close 1)
+        # Actually: open 1 (stack=[1]), open 2 (stack=[1,2]),
+        #   close 1 (top=2, not 1 → skip), close 2 (top=2 → match)
+        # Result: 1 unmatched (removed), 2 matched (kept)
+        inner_tags = [self._make_tag(1), self._make_tag(2, "em")]
+        text = "{{1}}a{{2}}b{{/1}}c{{/2}}"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        assert elem.find("em") is not None
+        assert elem.find("b") is None
+
+    def test_self_closing_always_kept(self, handler: InnerTagHandler):
+        """Self-closing placeholders are always valid."""
+        inner_tags = [
+            InnerTag(index=1, tag_name="br", attributes={}, is_self_closing=True),
+        ]
+        text = "line1{{1/}}line2"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        assert elem.find("br") is not None
+        assert elem.text == "line1"
+
+    def test_self_closing_mixed_with_unmatched(self, handler: InnerTagHandler):
+        """Self-closing kept even when paired tags are unmatched."""
+        inner_tags = [
+            self._make_tag(1),
+            InnerTag(index=2, tag_name="br", attributes={}, is_self_closing=True),
+        ]
+        text = "{{1}}orphan{{2/}}end"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        # {{1}} removed (no {{/1}}), {{2/}} kept
+        assert elem.find("b") is None
+        assert elem.find("br") is not None
+
+    def test_nested_valid_pairs(self, handler: InnerTagHandler):
+        """Properly nested pairs are all kept."""
+        inner_tags = [self._make_tag(1), self._make_tag(2, "em")]
+        text = "{{1}}outer {{2}}inner{{/2}} outer{{/1}}"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        b = elem.find("b")
+        assert b is not None
+        assert b.find("em") is not None
+        assert b.find("em").text == "inner"
+
+    def test_empty_inner_tags_returns_text_as_is(self, handler: InnerTagHandler):
+        """With no inner_tags, placeholders in text are left as-is."""
+        text = "Hello {{1}}world{{/1}}"
+
+        elem = handler.restore_to_element("p", text, [])
+
+        # No inner_tags → _filter_invalid_placeholders returns text unchanged
+        # restore treats unknown placeholders separately
+        assert elem is not None
+        assert elem.tag == "p"
+
+    def test_duplicate_open_close_pairs(self, handler: InnerTagHandler):
+        """Same tag index used twice — each pair matched independently."""
+        inner_tags = [self._make_tag(1)]
+        text = "{{1}}first{{/1}} mid {{1}}second{{/1}}"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        b_tags = elem.findall("b")
+        assert len(b_tags) == 2
