@@ -60,7 +60,15 @@ SELF_CLOSING_TAGS = frozenset({
 # Regex Patterns for Parsing Placeholders
 # =============================================================================
 
-# Combined pattern for tokenization (captures all tag types)
+# Normalize broken brace placeholders before processing.
+# Matches {{n} (missing closing) and {n}} (missing opening), but NOT {n}.
+_BROKEN_BRACE_PATTERN = re.compile(
+    r'\{\{\s*[/\\／]?\s*\d+\s*[/\\／]?\s*\}(?!\})'   # {{n} — missing closing brace
+    r'|'
+    r'(?<!\{)\{\s*[/\\／]?\s*\d+\s*[/\\／]?\s*\}\}'   # {n}} — missing opening brace
+)
+
+# Standard placeholder pattern (after normalization, all braces are doubled).
 # Group 1: closing prefix (/, \, ／) or None
 # Group 2: tag number (digits only)
 # Group 3: self-closing suffix (/, \, ／) or None
@@ -68,11 +76,11 @@ SELF_CLOSING_TAGS = frozenset({
 # Handles GPT formatting errors:
 # - Extra spaces: {{ 1 }}, {{ / 1 }}
 # - Fullwidth slash: {{／1}}, {{1／}}
-# - Backslash: {{\\1}}, {{1\\}}
+# - Backslash: {{\1}}, {{1\}}
 #
 # Note: Non-numeric content like {{name}} is NOT matched and preserved as-is.
 TOKEN_PATTERN = re.compile(
-    r'\{\s*\{\s*([/\\／])?\s*(\d+)\s*([/\\／])?\s*\}\s*\}'
+    r'\{\{\s*([/\\／])?\s*(\d+)\s*([/\\／])?\s*\}\}'
 )
 
 
@@ -383,7 +391,8 @@ class InnerTagHandler:
         Returns:
             lxml Element with restored structure.
         """
-        cleaned_text = self._filter_invalid_placeholders(translated_text, inner_tags)
+        normalized_text = self._normalize_placeholders(translated_text)
+        cleaned_text = self._filter_invalid_placeholders(normalized_text, inner_tags)
         escaped_text = self._escape_text_outside_placeholders(cleaned_text)
         restored_xml = self.restore(escaped_text, inner_tags, nsmap)
         attr_str = self._build_attr_string(parent_attributes) if parent_attributes else ""
@@ -399,6 +408,20 @@ class InnerTagHandler:
             )
             raise
 
+    def _normalize_placeholders(self, text: str) -> str:
+        """
+        Fix broken brace placeholders: {{n} → {{n}}, {n}} → {{n}}.
+
+        Single-brace {n} is NOT affected (not matched by _BROKEN_BRACE_PATTERN).
+        """
+        def _fix_braces(m: re.Match) -> str:
+            s = m.group(0)
+            if s.startswith('{{'):
+                return s + '}'   # {{n} → {{n}}
+            return '{' + s       # {n}} → {{n}}
+
+        return _BROKEN_BRACE_PATTERN.sub(_fix_braces, text)
+
     def _filter_invalid_placeholders(
         self,
         text: str,
@@ -412,9 +435,6 @@ class InnerTagHandler:
         - Unknown indices are removed.
         - Unmatched opening/closing placeholders are removed.
         """
-        if not inner_tags:
-            return text
-
         tag_map = {tag.index: tag for tag in inner_tags}
         matches: list[re.Match] = list(TOKEN_PATTERN.finditer(text))
         keep_flags = [False] * len(matches)
@@ -466,6 +486,7 @@ class InnerTagHandler:
         last_index = 0
         for match in TOKEN_PATTERN.finditer(text):
             start, end = match.span()
+
             if start > last_index:
                 parts.append(self._escape_xml_text(text[last_index:start]))
             parts.append(match.group(0))

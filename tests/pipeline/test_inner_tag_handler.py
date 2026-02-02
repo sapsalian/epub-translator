@@ -593,3 +593,60 @@ class TestFilterInvalidPlaceholders:
 
         b_tags = elem.findall("b")
         assert len(b_tags) == 2
+
+    def test_empty_inner_tags_removes_hallucinated_placeholders(self, handler: InnerTagHandler):
+        """Hallucinated placeholders are removed when inner_tags is empty."""
+        text = "챕터 끝에 있는 {{1}}노트{{/1}}를 참조하세요."
+
+        elem = handler.restore_to_element("p", text, [])
+
+        assert elem.text == "챕터 끝에 있는 노트를 참조하세요."
+        assert len(list(elem)) == 0
+
+
+class TestNormalizePlaceholders:
+    """Tests for _normalize_placeholders."""
+
+    def test_standard_double_braces_unchanged(self, handler: InnerTagHandler):
+        """{{n}} is not modified."""
+        assert handler._normalize_placeholders("{{1}}text{{/1}}") == "{{1}}text{{/1}}"
+
+    def test_missing_closing_brace(self, handler: InnerTagHandler):
+        """{{n} → {{n}}."""
+        assert handler._normalize_placeholders("{{1}text{{/1}") == "{{1}}text{{/1}}"
+
+    def test_missing_opening_brace(self, handler: InnerTagHandler):
+        """{n}} → {{n}}."""
+        assert handler._normalize_placeholders("{1}}text{/1}}") == "{{1}}text{{/1}}"
+
+    def test_single_braces_untouched(self, handler: InnerTagHandler):
+        """{n} is NOT a placeholder — left as-is."""
+        assert handler._normalize_placeholders("use {1} for format") == "use {1} for format"
+
+    def test_mixed_broken_braces(self, handler: InnerTagHandler):
+        """Mix of broken and valid placeholders."""
+        text = "{{1}}ok{{/1}} and {2}}broken{{/2}"
+        expected = "{{1}}ok{{/1}} and {{2}}broken{{/2}}"
+        assert handler._normalize_placeholders(text) == expected
+
+    def test_self_closing_missing_brace(self, handler: InnerTagHandler):
+        """{{n/} → {{n/}}."""
+        assert handler._normalize_placeholders("line{{1/}end") == "line{{1/}}end"
+
+    def test_spaces_in_broken_braces(self, handler: InnerTagHandler):
+        """{{ 1 } with spaces → {{ 1 }}."""
+        assert handler._normalize_placeholders("{{ 1 }text") == "{{ 1 }}text"
+
+    def test_closing_tag_missing_brace(self, handler: InnerTagHandler):
+        """{{/n} → {{/n}}."""
+        assert handler._normalize_placeholders("text{{/1}end") == "text{{/1}}end"
+
+    def test_restore_to_element_with_broken_braces(self, handler: InnerTagHandler):
+        """Full flow: broken braces → normalize → filter → restore."""
+        inner_tags = [InnerTag(index=1, tag_name="b", attributes={}, is_self_closing=False)]
+        text = "Hello {1}}world{{/1}!"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        assert elem.find("b") is not None
+        assert elem.find("b").text == "world"
