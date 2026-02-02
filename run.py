@@ -61,30 +61,30 @@ Examples:
     )
     parser.add_argument(
         "--source", "-s",
-        default="en",
+        default=None,
         choices=list(LANGUAGE_MAP.keys()),
-        help="Source language (default: en)",
+        help="Source language (default: from .env)",
     )
     parser.add_argument(
         "--target", "-t",
-        default="ko",
+        default=None,
         choices=list(LANGUAGE_MAP.keys()),
-        help="Target language (default: ko)",
+        help="Target language (default: from .env)",
     )
     parser.add_argument(
         "--output-dir", "-o",
-        default="./output",
-        help="Output directory (default: ./output)",
+        default=None,
+        help="Output directory (default: from .env)",
     )
     parser.add_argument(
         "--checkpoint-dir", "-c",
-        default="./checkpoints",
-        help="Checkpoint directory (default: ./checkpoints)",
+        default=None,
+        help="Checkpoint directory (default: from .env)",
     )
     parser.add_argument(
         "--model", "-m",
-        default="gpt-4.1-mini",
-        help="OpenAI model to use (default: gpt-4.1-mini)",
+        default=None,
+        help="OpenAI model to use (default: from .env)",
     )
     parser.add_argument(
         "--clear",
@@ -115,31 +115,35 @@ async def main():
         logger.error("EPUB file not found: %s", epub_path)
         sys.exit(1)
 
-    # Check for API key
+    # Build CLI overrides (only explicitly provided args)
+    cli_overrides = {}
+    if args.source:
+        cli_overrides["source_language"] = LANGUAGE_MAP[args.source]
+    if args.target:
+        cli_overrides["target_language"] = LANGUAGE_MAP[args.target]
+    if args.model:
+        cli_overrides["model"] = args.model
+    if args.output_dir:
+        cli_overrides["output_dir"] = Path(args.output_dir)
+    if args.checkpoint_dir:
+        cli_overrides["checkpoint_dir"] = Path(args.checkpoint_dir)
+
+    # Create config from .env + CLI overrides
+    config = PipelineConfig.from_env(**cli_overrides)
+
+    # Check for API key (.env is already loaded by from_env)
     import os
     if not os.getenv("OPENAI_API_KEY"):
         logger.error("OPENAI_API_KEY environment variable is not set")
-        logger.info("Set it with: export OPENAI_API_KEY='your-key-here'")
+        logger.info("Set it in .env or with: export OPENAI_API_KEY='your-key-here'")
         sys.exit(1)
-
-    # Create config
-    source_lang = LANGUAGE_MAP[args.source]
-    target_lang = LANGUAGE_MAP[args.target]
-
-    config = PipelineConfig(
-        source_language=source_lang,
-        target_language=target_lang,
-        model=args.model,
-        output_dir=Path(args.output_dir),
-        checkpoint_dir=Path(args.checkpoint_dir),
-    )
 
     logger.info("=" * 60)
     logger.info("EPUB Translation Pipeline")
     logger.info("=" * 60)
     logger.info("Input:  %s", epub_path)
-    logger.info("Source: %s", source_lang.value)
-    logger.info("Target: %s", target_lang.value)
+    logger.info("Source: %s", config.source_language.value)
+    logger.info("Target: %s", config.target_language.value)
     logger.info("Model:  %s", config.model)
     logger.info("Output: %s", config.output_dir)
     logger.info("=" * 60)
