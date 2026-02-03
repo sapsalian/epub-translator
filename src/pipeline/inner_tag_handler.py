@@ -190,7 +190,7 @@ class InnerTagHandler:
 
         if is_opaque:
             # Preserve the entire element as raw XML
-            raw_xml = etree.tostring(element, encoding="unicode")
+            raw_xml = etree.tostring(element, encoding="unicode", with_tail=False)
 
         # Collect attributes (excluding namespace declarations)
         attributes = {
@@ -363,7 +363,14 @@ class InnerTagHandler:
         """
         if not attributes:
             return ""
-        attr_parts = [f'{k}="{v}"' for k, v in attributes.items()]
+        attr_parts = []
+        for k, v in attributes.items():
+            escaped = (
+                v.replace("&", "&amp;")
+                .replace('"', "&quot;")
+                .replace("<", "&lt;")
+            )
+            attr_parts.append(f'{k}="{escaped}"')
         return " " + " ".join(attr_parts)
 
     # -------------------------------------------------------------------------

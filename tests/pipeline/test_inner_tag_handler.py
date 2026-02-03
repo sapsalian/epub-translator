@@ -351,6 +351,19 @@ class TestOpaqueTags:
         assert result.inner_tags[0].raw_xml is not None
         assert "x = 1" in result.inner_tags[0].raw_xml
 
+    def test_raw_xml_excludes_tail_text(self, handler: InnerTagHandler):
+        """raw_xml must not include tail text after the element."""
+        element = etree.fromstring(
+            "<p>The <code>users</code> table and its subordinate tables.</p>"
+        )
+        result = handler.extract(element)
+
+        raw = result.inner_tags[0].raw_xml
+        assert raw is not None
+        assert "users" in raw
+        assert "table" not in raw
+        assert "subordinate" not in raw
+
     def test_math_tag_preserved_as_raw_xml(self, handler: InnerTagHandler):
         """Math tag structure is preserved as raw XML."""
         element = etree.fromstring(
