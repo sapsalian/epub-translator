@@ -7,6 +7,7 @@ Provides LLMClient implementation using OpenAI's Responses API with structured o
 import json
 import logging
 import os
+import re
 
 from openai import AsyncOpenAI, APIError, RateLimitError as OpenAIRateLimitError
 
@@ -28,6 +29,53 @@ from .retry import (
 from .schemas import CHUNK_EXTRACTION_SCHEMA, MERGE_SCHEMA, TRANSLATION_SCHEMA
 
 logger = logging.getLogger(__name__)
+
+_RETRY_AFTER_PATTERN = re.compile(r"try again in (\d+\.?\d*)")
+_RESET_TIME_PATTERN = re.compile(r"(?:(\d+)m)?(\d+(?:\.\d+)?)?s?$")
+
+
+def _parse_reset_time(value: str) -> float | None:
+    """Parse OpenAI rate limit reset time format (e.g., '6m0s', '1s', '500ms')."""
+    if value.endswith("ms"):
+        try:
+            return float(value[:-2]) / 1000.0
+        except ValueError:
+            return None
+
+    match = _RESET_TIME_PATTERN.fullmatch(value)
+    if not match:
+        return None
+
+    minutes = int(match.group(1)) if match.group(1) else 0
+    seconds = float(match.group(2)) if match.group(2) else 0.0
+    return minutes * 60 + seconds
+
+
+def _parse_retry_after(error: OpenAIRateLimitError) -> float | None:
+    """Extract retry-after seconds from a rate limit error.
+
+    Priority: retry-after header → error message → x-ratelimit-reset-tokens.
+    """
+    if hasattr(error, "response") and error.response is not None:
+        headers = error.response.headers
+
+        retry_after = headers.get("retry-after")
+        if retry_after:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+
+    match = _RETRY_AFTER_PATTERN.search(str(error))
+    if match:
+        return float(match.group(1))
+
+    if hasattr(error, "response") and error.response is not None:
+        reset_tokens = error.response.headers.get("x-ratelimit-reset-tokens")
+        if reset_tokens:
+            return _parse_reset_time(reset_tokens)
+
+    return None
 
 
 class OpenAIClient:
@@ -201,7 +249,9 @@ class OpenAIClient:
                 )
                 return json.loads(response.output_text)
             except OpenAIRateLimitError as e:
-                raise RateLimitError(str(e)) from e
+                raise RateLimitError(
+                    str(e), retry_after=_parse_retry_after(e)
+                ) from e
             except APIError as e:
                 if e.status_code and e.status_code >= 500:
                     raise TransientAPIError(str(e)) from e
