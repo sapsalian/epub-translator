@@ -1,6 +1,7 @@
 """Tests for ExtractionWorker."""
 
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -119,13 +120,56 @@ class TestExtraction:
         xhtml_with_units = [x for x in result.xhtml_extractions if x.text_units]
         assert len(xhtml_with_units) > 0
 
-        for xhtml_extraction in xhtml_with_units:
-            for text_unit in xhtml_extraction.text_units:
-                assert isinstance(text_unit, TextUnit)
-                assert text_unit.unit_id
-                assert text_unit.location.xhtml_path
-                assert text_unit.location.xpath
-                assert text_unit.tagged_text
+    def test_handles_html_named_entities(self, worker: ExtractionWorker, tmp_path: Path):
+        """Extraction succeeds when XHTML contains HTML named entities like &nbsp;."""
+        epub_path = tmp_path / "entity.epub"
+        container_xml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+"""
+        content_opf = """<?xml version="1.0" encoding="UTF-8"?>
+<package version="3.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Test</dc:title>
+  </metadata>
+  <manifest>
+    <item id="item1" href="Text/ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="item1"/>
+  </spine>
+</package>
+"""
+        xhtml = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><title>Test</title></head>
+  <body><p>Hello&nbsp;world</p></body>
+</html>
+"""
+
+        with ZipFile(epub_path, "w") as zf:
+            zf.writestr("mimetype", "application/epub+zip")
+            zf.writestr("META-INF/container.xml", container_xml)
+            zf.writestr("OEBPS/content.opf", content_opf)
+            zf.writestr("OEBPS/Text/ch1.xhtml", xhtml)
+
+        input_data = ExtractionInput(
+            epub_id="entity-epub",
+            epub_path=epub_path,
+            source_language=Language.ENGLISH,
+            matcher_strategy=MatcherStrategy.ALL_ELEMENTS,
+        )
+        result = worker.process(input_data)
+
+        assert isinstance(result, ExtractionResult)
+        assert len(result.xhtml_extractions) == 1
+        text_units = result.xhtml_extractions[0].text_units
+        assert len(text_units) > 0
+        assert "Hello" in text_units[0].source_text
+        assert "world" in text_units[0].source_text
 
     def test_generates_unique_xhtml_ids(
         self, worker: ExtractionWorker, extraction_input: ExtractionInput

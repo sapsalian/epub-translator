@@ -604,6 +604,23 @@ class TestFilterInvalidPlaceholders:
         assert len(list(elem)) == 0
 
 
+class TestEscapeTextOutsidePlaceholders:
+    """Tests for escaping text outside placeholders."""
+
+    def test_escapes_xml_chars_outside_placeholders(self, handler: InnerTagHandler):
+        """& and < > in plain text are escaped but placeholders remain intact."""
+        inner_tags = [InnerTag(index=1, tag_name="b", attributes={}, is_self_closing=False)]
+        text = "A & B {{1}}C{{/1}} and <tag>"
+
+        elem = handler.restore_to_element("p", text, inner_tags)
+
+        b = elem.find("b")
+        assert b is not None
+        assert elem.text == "A & B "
+        assert b.text == "C"
+        assert "<tag>" in (b.tail or "")
+
+
 class TestNormalizePlaceholders:
     """Tests for _normalize_placeholders."""
 

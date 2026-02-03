@@ -15,7 +15,10 @@ This is a CPU-bound worker that:
 """
 
 import hashlib
+import html.entities
 import logging
+import re
+from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -37,6 +40,31 @@ from .base import ExtractionError, Worker
 
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# HTML Entity Handling
+# =============================================================================
+
+_HTML_ENTITY_PATTERN = re.compile(rb"&([a-zA-Z]+);")
+
+
+def _replace_html_entities(content: bytes) -> bytes:
+    """Replace HTML named entities with XML numeric entities.
+
+    XML only defines 5 named entities (&lt; &gt; &amp; &quot; &apos;).
+    EPUB XHTML files often contain HTML entities like &nbsp; &mdash; etc.
+    that cause XML parse errors. This converts them all to numeric form
+    (e.g., &nbsp; → &#160;) which is always valid in XML.
+    """
+    def _replace(m: re.Match[bytes]) -> bytes:
+        name = m.group(1).decode("ascii")
+        codepoint = html.entities.name2codepoint.get(name)
+        if codepoint is not None:
+            return f"&#{codepoint};".encode("ascii")
+        return m.group(0)
+
+    return _HTML_ENTITY_PATTERN.sub(_replace, content)
 
 
 # =============================================================================
@@ -181,8 +209,10 @@ class ExtractionWorker(Worker[ExtractionInput, ExtractionResult]):
         xhtml_id = self._generate_xhtml_id(epub_id, xhtml_path)
 
         with zf.open(xhtml_path) as f:
-            tree = etree.parse(f)
-            root = tree.getroot()
+            content = _replace_html_entities(f.read())
+        parser = etree.XMLParser(recover=True)
+        tree = etree.parse(BytesIO(content), parser=parser)
+        root = tree.getroot()
 
         text_units: list[TextUnit] = []
         raw_texts: list[str] = []
