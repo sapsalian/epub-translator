@@ -270,6 +270,23 @@ class TestPreprocessing:
         # Final merge for 2 XHTMLs
         assert mock_api_client.merge_extractions.call_count == 1
 
+    def test_passes_custom_instructions_to_api(
+        self,
+        worker: PreprocessWorker,
+        preprocess_input: PreprocessInput,
+        mock_api_client: AsyncMock,
+    ):
+        """custom_instructions is forwarded to extract_chunk and merge_extractions."""
+        preprocess_input.custom_instructions = "Prefer concise sentences."
+
+        asyncio.run(worker.process(preprocess_input))
+
+        extract_kwargs = mock_api_client.extract_chunk.call_args.kwargs
+        assert extract_kwargs["custom_instructions"] == "Prefer concise sentences."
+
+        merge_kwargs = mock_api_client.merge_extractions.call_args.kwargs
+        assert merge_kwargs["custom_instructions"] == "Prefer concise sentences."
+
     def test_skips_empty_xhtml(
         self,
         mock_api_client: AsyncMock,

@@ -66,6 +66,7 @@ class TranslationAPIClient(Protocol):
         target_language: Language,
         term_dictionary: TermDict,
         context_summary: str,
+        style_guidelines: str = "",
     ) -> list[str]:
         """
         Translate text units.
@@ -76,6 +77,7 @@ class TranslationAPIClient(Protocol):
             target_language: Target language.
             term_dictionary: Term mappings (source -> target).
             context_summary: Summary for translation context.
+            style_guidelines: Style guidelines for translation.
 
         Returns:
             List of translated texts in same order as text_units.
@@ -103,6 +105,9 @@ class TranslationInput(BaseModel):
     )
     context_summary: str = Field(
         default="", description="Summary of the content for translation context"
+    )
+    style_guidelines: str = Field(
+        default="", description="Style guidelines for translation"
     )
     batch_size: int = Field(
         default=DEFAULT_BATCH_SIZE,
@@ -194,6 +199,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                 target_language=task.target_language,
                 term_dictionary=term_dict,
                 context_summary=input_data.context_summary,
+                style_guidelines=input_data.style_guidelines,
                 semaphore=semaphore,
                 max_empty_retries=input_data.max_empty_retries,
             )
@@ -225,6 +231,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         target_language: Language,
         term_dictionary: TermDict,
         context_summary: str,
+        style_guidelines: str,
         semaphore: asyncio.Semaphore,
         max_empty_retries: int = DEFAULT_MAX_EMPTY_RETRIES,
     ) -> list[TranslatedUnit]:
@@ -237,6 +244,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
             target_language: Target language.
             term_dictionary: Term mappings.
             context_summary: Content summary.
+            style_guidelines: Style guidelines for translation.
             semaphore: Semaphore for concurrency control.
             max_empty_retries: Maximum retries for empty translations.
 
@@ -251,6 +259,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                 target_language=target_language,
                 term_dictionary=term_dictionary,
                 context_summary=context_summary,
+                style_guidelines=style_guidelines,
                 semaphore=semaphore,
                 max_empty_retries=max_empty_retries,
             )
@@ -274,6 +283,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         target_language: Language,
         term_dictionary: TermDict,
         context_summary: str,
+        style_guidelines: str,
         semaphore: asyncio.Semaphore,
         max_empty_retries: int = DEFAULT_MAX_EMPTY_RETRIES,
     ) -> list[TranslatedUnit]:
@@ -289,6 +299,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
             target_language: Target language.
             term_dictionary: Term mappings.
             context_summary: Content summary.
+            style_guidelines: Style guidelines for translation.
             semaphore: Semaphore for concurrency control.
             max_empty_retries: Maximum retries for empty translations.
 
@@ -307,6 +318,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                 target_language=target_language,
                 term_dictionary=term_dictionary,
                 context_summary=context_summary,
+                style_guidelines=style_guidelines,
             )
 
             # Build result map (unit_id -> translation)
@@ -340,6 +352,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                     target_language=target_language,
                     term_dictionary=term_dictionary,
                     context_summary=context_summary,
+                    style_guidelines=style_guidelines,
                 )
 
                 # Update result map with retry results

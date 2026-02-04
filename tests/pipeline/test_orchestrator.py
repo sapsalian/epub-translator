@@ -289,3 +289,32 @@ class TestJobManagement:
 
         with pytest.raises(RuntimeError, match="not initialized"):
             await orchestrator.get_job_status(epub_path)
+
+
+class TestStyleGuidelines:
+    """Tests for style guideline composition."""
+
+    def test_compose_style_guidelines(self, config):
+        """Compose uses XHTML style, falls back to EPUB style, adds custom instructions."""
+        config.custom_instructions = "Prefer concise sentences."
+        orchestrator = PipelineOrchestrator(config)
+
+        combined = orchestrator._compose_style_guidelines(
+            xhtml_style="Use present tense.",
+            epub_style="Third-person limited.",
+            custom_instructions=config.custom_instructions,
+        )
+
+        assert "XHTML Style Notes" in combined
+        assert "Custom Instructions" in combined
+        assert "Use present tense." in combined
+        assert "Prefer concise sentences." in combined
+
+        combined_fallback = orchestrator._compose_style_guidelines(
+            xhtml_style="",
+            epub_style="Third-person limited.",
+            custom_instructions="",
+        )
+
+        assert "EPUB Style Guide" in combined_fallback
+        assert "Third-person limited." in combined_fallback

@@ -219,6 +219,27 @@ class TestTranslation:
         assert "unit-001" in unit_ids
         assert "unit-002" in unit_ids
 
+    def test_passes_style_guidelines(
+        self,
+        worker: TranslationWorker,
+        sample_task: TranslationTask,
+        sample_term_dictionary: TermDictionary,
+        mock_api_client: AsyncMock,
+    ):
+        """style_guidelines is forwarded to the API client."""
+        input_data = TranslationInput(
+            task=sample_task,
+            source_language=Language.ENGLISH,
+            term_dictionary=sample_term_dictionary,
+            context_summary="Context",
+            style_guidelines="Use plain form.",
+        )
+
+        asyncio.run(worker.process(input_data))
+
+        called_kwargs = mock_api_client.translate.call_args.kwargs
+        assert called_kwargs["style_guidelines"] == "Use plain form."
+
     def test_preserves_unit_order(
         self,
         worker: TranslationWorker,

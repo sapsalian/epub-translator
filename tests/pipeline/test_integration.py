@@ -60,7 +60,13 @@ def mock_api_client():
     client = MagicMock()
 
     # Mock extract_chunk - returns summary and terms
-    async def mock_extract_chunk(chunk_text, source_language, target_language, existing_terms=None):
+    async def mock_extract_chunk(
+        chunk_text,
+        source_language,
+        target_language,
+        existing_terms=None,
+        custom_instructions="",
+    ):
         return ChunkResult(
             summary=f"Summary of chunk: {chunk_text[:50]}...",
             terms={"hello": "안녕하세요", "world": "세계"},
@@ -69,7 +75,13 @@ def mock_api_client():
     client.extract_chunk = AsyncMock(side_effect=mock_extract_chunk)
 
     # Mock merge_extractions
-    async def mock_merge_extractions(chunk_summaries, chunk_terms, source_language, target_language):
+    async def mock_merge_extractions(
+        chunk_summaries,
+        chunk_terms,
+        source_language,
+        target_language,
+        custom_instructions="",
+    ):
         merged_terms: dict[str, str] = {}
         for terms in chunk_terms:
             merged_terms.update(terms)
@@ -82,7 +94,14 @@ def mock_api_client():
     client.merge_extractions = AsyncMock(side_effect=mock_merge_extractions)
 
     # Mock translate
-    async def mock_translate(text_units, source_language, target_language, term_dictionary, context_summary):
+    async def mock_translate(
+        text_units,
+        source_language,
+        target_language,
+        term_dictionary,
+        context_summary,
+        style_guidelines="",
+    ):
         # Return Korean placeholder translations
         return [f"[번역됨] {unit.tagged_text}" for unit in text_units]
 
