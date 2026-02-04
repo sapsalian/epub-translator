@@ -131,6 +131,7 @@ class OpenAIClient:
         return ChunkExtraction(
             summary=result["summary"],
             terms=terms,
+            style_notes=result.get("style_notes", ""),
         )
 
     async def merge_extractions(
@@ -168,6 +169,7 @@ class OpenAIClient:
         return MergedExtraction(
             summary=result["summary"],
             terms=terms,
+            style_notes=result.get("style_notes", ""),
         )
 
     async def translate(
@@ -177,6 +179,7 @@ class OpenAIClient:
         target_language: Language,
         term_dictionary: TermDict,
         context_summary: str,
+        style_guidelines: str = "",
     ) -> list[str]:
         """Translate text units using OpenAI Responses API."""
         if not text_units:
@@ -192,6 +195,7 @@ class OpenAIClient:
             target_language=target_language,
             term_dictionary=term_dictionary,
             context_summary=context_summary,
+            style_guidelines=style_guidelines,
         )
 
         result = await self._call_structured(

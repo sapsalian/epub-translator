@@ -17,6 +17,7 @@ class ChunkExtraction:
 
     summary: str
     terms: TermDict
+    style_notes: str = ""
 
 
 @dataclass
@@ -25,6 +26,7 @@ class MergedExtraction:
 
     summary: str
     terms: TermDict
+    style_notes: str = ""
 
 
 class PreprocessClient(Protocol):
@@ -91,6 +93,7 @@ class TranslationClient(Protocol):
         target_language: Language,
         term_dictionary: TermDict,
         context_summary: str,
+        style_guidelines: str = "",
     ) -> list[str]:
         """
         Translate text units.
@@ -101,6 +104,7 @@ class TranslationClient(Protocol):
             target_language: Target language.
             term_dictionary: Term mappings to use (source -> target).
             context_summary: Summary for translation context.
+            style_guidelines: Style guidelines for translation.
 
         Returns:
             List of translated texts (preserving placeholder tags).

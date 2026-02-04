@@ -74,10 +74,15 @@ def build_translation_input(
     target_language: Language,
     term_dictionary: TermDict,
     context_summary: str,
+    style_guidelines: str = "",
 ) -> str:
     context_section = ""
     if context_summary:
         context_section = f"\n\nContext:\n{context_summary}"
+
+    style_section = ""
+    if style_guidelines:
+        style_section = f"\n\nStyle Guidelines:\n{style_guidelines}"
 
     terms_section = ""
     if term_dictionary:
@@ -93,6 +98,7 @@ def build_translation_input(
     return (
         f"Translate from {source_language.value} to {target_language.value}."
         f"{context_section}"
+        f"{style_section}"
         f"{terms_section}\n"
         f"\n--- Texts to Translate ---\n"
         f"(Each line: [unit_id] text)\n"

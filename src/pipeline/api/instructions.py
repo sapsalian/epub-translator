@@ -14,6 +14,15 @@ CHUNK_EXTRACTION = """You are a professional text analyst.
 Your task is to analyze a text chunk and extract:
 1. **Summary**: A brief summary (2-3 sentences) capturing the main content, key entities, and tone.
 2. **Terms**: A dictionary mapping source terms to their target language translations.
+3. **Style Notes**: A brief analysis of writing style (2-3 sentences) covering:
+   - Narrative characteristics (POV, tense, narrator type)
+   - Tone and register (formal/informal, humorous/serious)
+   - Character speech patterns (if distinctive)
+   - Target language formality: Recommend the appropriate formality level
+     and speech style for the specified target language.
+     (Examples: Korean 존댓말/반말 + 체, Japanese 敬語 level,
+      Spanish usted/tú, French vouvoiement/tutoiement, etc.
+      Adapt to whichever target language is specified.)
 
 ## Term Selection Criteria
 
@@ -48,7 +57,8 @@ Output JSON example:
   "terms": [
     {"source": "Milo", "target": "마일로"},
     {"source": "Hellhounds", "target": "헬하운드"}
-  ]
+  ],
+  "style_notes": "Third-person limited POV, present tense. Tense, fast-paced action tone. For Korean: 해라체 (plain form) recommended for narrative, 해요체 for dialogue."
 }"""
 
 
@@ -63,7 +73,10 @@ Your task is to merge multiple chunk analyses into a coherent whole:
 2. **Terms**: Merge and curate the term dictionary:
    - Resolve conflicts: if the same source term has different translations, choose the most appropriate one based on full context
    - Remove duplicates (including case variants like "demon" and "Demon" — keep the canonical form)
-  - **Filter aggressively**: remove common words that slipped through (water, door, school, etc.) — keep ONLY proper nouns, coined terms, technical vocabulary, and abbreviations that truly need consistency
+   - **Filter aggressively**: remove common words that slipped through (water, door, school, etc.) — keep ONLY proper nouns, coined terms, technical vocabulary, and abbreviations that truly need consistency
+3. **Style Notes**: Combine style analyses into a unified style guide (3-5 sentences).
+   Capture the dominant style, note variations (e.g. POV shifts, character speech patterns).
+   Include a clear recommendation for the target language formality and speech style.
 
 Output must follow the provided JSON schema exactly. Do not add extra keys or commentary.
 
@@ -88,7 +101,8 @@ Output JSON example:
     {"source": "Milo Maeda", "target": "마일로 마에다"},
     {"source": "Hellhounds", "target": "헬하운드"},
     {"source": "IDHS", "target": "국제 악마 사냥 협회"}
-  ]
+  ],
+  "style_notes": "Third-person limited POV alternating between characters, past tense. Tense action-thriller tone with moments of introspection. For Korean: 해라체 for narrative, 해요체 for dialogue."
 }"""
 
 

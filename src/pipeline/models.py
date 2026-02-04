@@ -161,6 +161,12 @@ class PreprocessResult(BaseModel):
     epub_summary: str = Field(
         default="", description="Overall EPUB summary for context"
     )
+    style_notes: dict[str, str] = Field(
+        default_factory=dict, description="xhtml_id -> style notes mapping"
+    )
+    epub_style: str = Field(
+        default="", description="Overall EPUB style guide for translation"
+    )
 
     def to_json(self) -> str:
         """Serialize to JSON string."""
