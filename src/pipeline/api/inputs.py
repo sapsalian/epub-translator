@@ -48,6 +48,7 @@ def build_meta_merge_input(
     chunk_terms: list[TermDict],
     source_language: Language,
     target_language: Language,
+    chunk_styles: list[str] | None = None,
     custom_instructions: str = "",
 ) -> str:
     summaries_section = "\n".join(
@@ -65,6 +66,15 @@ def build_meta_merge_input(
         )
         terms_section = f"\n\n--- Collected Terms ---\n{term_lines}"
 
+    styles_section = ""
+    non_empty_styles = [s for s in (chunk_styles or []) if s]
+    if non_empty_styles:
+        style_lines = "\n".join(
+            f"\nChunk {i}:\n{style}"
+            for i, style in enumerate(non_empty_styles, 1)
+        )
+        styles_section = f"\n\n--- Chunk Style Notes ---{style_lines}"
+
     custom_section = ""
     if custom_instructions:
         custom_section = f"\n\nCustom Instructions:\n{custom_instructions}"
@@ -76,6 +86,7 @@ def build_meta_merge_input(
         f"\n--- Chunk Summaries ---"
         f"{summaries_section}"
         f"{terms_section}"
+        f"{styles_section}"
     )
 
 

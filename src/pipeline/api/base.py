@@ -65,6 +65,7 @@ class PreprocessClient(Protocol):
         chunk_terms: list[TermDict],
         source_language: Language,
         target_language: Language,
+        chunk_styles: list[str] | None = None,
         custom_instructions: str = "",
     ) -> MergedExtraction:
         """
@@ -75,6 +76,7 @@ class PreprocessClient(Protocol):
             chunk_terms: List of term dicts from each chunk (source -> target).
             source_language: Source language.
             target_language: Target language.
+            chunk_styles: List of style notes from each chunk.
             custom_instructions: Custom style instructions to incorporate.
 
         Returns:

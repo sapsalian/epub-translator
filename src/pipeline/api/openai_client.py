@@ -142,6 +142,7 @@ class OpenAIClient:
         chunk_terms: list[TermDict],
         source_language: Language,
         target_language: Language,
+        chunk_styles: list[str] | None = None,
         custom_instructions: str = "",
     ) -> MergedExtraction:
         """Merge multiple chunk extractions into a unified result."""
@@ -152,6 +153,7 @@ class OpenAIClient:
             return MergedExtraction(
                 summary=chunk_summaries[0],
                 terms=chunk_terms[0],
+                style_notes=(chunk_styles[0] if chunk_styles else ""),
             )
 
         input_text = build_meta_merge_input(
@@ -159,6 +161,7 @@ class OpenAIClient:
             chunk_terms=chunk_terms,
             source_language=source_language,
             target_language=target_language,
+            chunk_styles=chunk_styles,
             custom_instructions=custom_instructions,
         )
 

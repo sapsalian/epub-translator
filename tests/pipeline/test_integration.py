@@ -80,6 +80,7 @@ def mock_api_client():
         chunk_terms,
         source_language,
         target_language,
+        chunk_styles=None,
         custom_instructions="",
     ):
         merged_terms: dict[str, str] = {}
@@ -89,6 +90,7 @@ def mock_api_client():
         return ChunkResult(
             summary="Merged summary: " + "; ".join(chunk_summaries[:3]),
             terms=merged_terms,
+            style_notes="Merged style notes",
         )
 
     client.merge_extractions = AsyncMock(side_effect=mock_merge_extractions)

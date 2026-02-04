@@ -101,6 +101,7 @@ class PreprocessAPIClient(Protocol):
         chunk_terms: list[TermDict],
         source_language: Language,
         target_language: Language,
+        chunk_styles: list[str] | None = None,
         custom_instructions: str = "",
     ) -> ChunkResult:
         """
@@ -111,6 +112,7 @@ class PreprocessAPIClient(Protocol):
             chunk_terms: List of term dicts from each chunk (source -> target).
             source_language: Source language.
             target_language: Target language.
+            chunk_styles: List of style notes from each chunk.
             custom_instructions: Custom style instructions to incorporate.
 
         Returns:
@@ -260,6 +262,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
             # Merge all XHTML terms into final EPUB term dictionary
             epub_summary = ""
             epub_style = ""
+            all_xhtml_styles = list(all_style_notes.values())
             if len(all_xhtml_terms) > 1:
                 # Use merge API to deduplicate and resolve conflicts
                 # Include summaries for better context during term conflict resolution
@@ -268,6 +271,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     chunk_terms=all_xhtml_terms,
                     source_language=extraction.source_language,
                     target_language=target_language,
+                    chunk_styles=all_xhtml_styles,
                     custom_instructions=custom_instructions,
                 )
                 final_mappings = merged.terms
@@ -373,6 +377,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 chunk_terms=chunk_terms,
                 source_language=source_language,
                 target_language=target_language,
+                chunk_styles=chunk_styles,
                 custom_instructions=custom_instructions,
             )
             return merged.summary, merged.terms, merged.style_notes
