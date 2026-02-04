@@ -605,3 +605,256 @@ class TestSerialization:
             result.term_dictionary.mappings
         )
         assert restored.summaries == result.summaries
+
+    def test_style_notes_roundtrip(
+        self,
+        mock_api_client: AsyncMock,
+    ):
+        """style_notes and epub_style survive JSON serialization."""
+        mock_api_client.extract_chunk.return_value = ChunkResult(
+            summary="Summary.", terms={"a": "b"}, style_notes="Third person, past tense."
+        )
+        mock_api_client.merge_extractions.return_value = ChunkResult(
+            summary="Merged.", terms={"a": "b"}, style_notes="Overall style guide."
+        )
+
+        extraction = ExtractionResult(
+            epub_id="test",
+            source_language=Language.ENGLISH,
+            xhtml_extractions=[
+                XhtmlExtraction(
+                    xhtml_id="x1", xhtml_path="ch1.xhtml",
+                    text_units=[], raw_text="Content one.",
+                ),
+                XhtmlExtraction(
+                    xhtml_id="x2", xhtml_path="ch2.xhtml",
+                    text_units=[], raw_text="Content two.",
+                ),
+            ],
+        )
+        input_data = PreprocessInput(
+            extraction_result=extraction, target_language=Language.KOREAN,
+        )
+        worker = PreprocessWorker(api_client=mock_api_client)
+        result = asyncio.run(worker.process(input_data))
+
+        json_str = result.to_json()
+        restored = PreprocessResult.from_json(json_str)
+
+        assert restored.style_notes == result.style_notes
+        assert restored.epub_style == result.epub_style
+
+    def test_backward_compatible_json_without_style_fields(self):
+        """JSON without style_notes/epub_style deserializes with defaults."""
+        old_json = (
+            '{"epub_id":"old","term_dictionary":{"source_language":"en",'
+            '"target_language":"ko","mappings":{}},'
+            '"summaries":{},"epub_summary":""}'
+        )
+        restored = PreprocessResult.from_json(old_json)
+
+        assert restored.style_notes == {}
+        assert restored.epub_style == ""
+
+
+# =============================================================================
+# Style Notes Tests
+# =============================================================================
+
+
+class TestStyleNotes:
+    """Tests for style_notes collection and forwarding."""
+
+    def test_collects_style_notes_per_xhtml(
+        self,
+        mock_api_client: AsyncMock,
+    ):
+        """style_notes from extract_chunk are collected per XHTML."""
+        call_count = 0
+
+        async def mock_extract(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return ChunkResult(
+                summary=f"Summary {call_count}.",
+                terms={},
+                style_notes=f"Style {call_count}.",
+            )
+
+        mock_api_client.extract_chunk.side_effect = mock_extract
+        mock_api_client.merge_extractions.return_value = ChunkResult(
+            summary="Merged.", terms={}, style_notes="Merged style.",
+        )
+
+        extraction = ExtractionResult(
+            epub_id="test",
+            source_language=Language.ENGLISH,
+            xhtml_extractions=[
+                XhtmlExtraction(
+                    xhtml_id="x1", xhtml_path="ch1.xhtml",
+                    text_units=[], raw_text="Content one.",
+                ),
+                XhtmlExtraction(
+                    xhtml_id="x2", xhtml_path="ch2.xhtml",
+                    text_units=[], raw_text="Content two.",
+                ),
+            ],
+        )
+        input_data = PreprocessInput(
+            extraction_result=extraction, target_language=Language.KOREAN,
+        )
+        worker = PreprocessWorker(api_client=mock_api_client)
+
+        result = asyncio.run(worker.process(input_data))
+
+        assert "x1" in result.style_notes
+        assert "x2" in result.style_notes
+        assert result.style_notes["x1"] == "Style 1."
+        assert result.style_notes["x2"] == "Style 2."
+
+    def test_epub_style_from_merge(
+        self,
+        mock_api_client: AsyncMock,
+    ):
+        """epub_style comes from final merge_extractions result."""
+        mock_api_client.extract_chunk.return_value = ChunkResult(
+            summary="S.", terms={"a": "b"}, style_notes="Per-XHTML style.",
+        )
+        mock_api_client.merge_extractions.return_value = ChunkResult(
+            summary="Merged.", terms={"a": "b"}, style_notes="EPUB-wide style guide.",
+        )
+
+        extraction = ExtractionResult(
+            epub_id="test",
+            source_language=Language.ENGLISH,
+            xhtml_extractions=[
+                XhtmlExtraction(
+                    xhtml_id="x1", xhtml_path="ch1.xhtml",
+                    text_units=[], raw_text="A.",
+                ),
+                XhtmlExtraction(
+                    xhtml_id="x2", xhtml_path="ch2.xhtml",
+                    text_units=[], raw_text="B.",
+                ),
+            ],
+        )
+        input_data = PreprocessInput(
+            extraction_result=extraction, target_language=Language.KOREAN,
+        )
+        worker = PreprocessWorker(api_client=mock_api_client)
+
+        result = asyncio.run(worker.process(input_data))
+
+        assert result.epub_style == "EPUB-wide style guide."
+
+    def test_single_xhtml_uses_xhtml_style_as_epub_style(
+        self,
+        mock_api_client: AsyncMock,
+    ):
+        """Single XHTML uses its style as epub_style without merge."""
+        mock_api_client.extract_chunk.return_value = ChunkResult(
+            summary="S.", terms={"a": "b"}, style_notes="Direct style.",
+        )
+
+        extraction = ExtractionResult(
+            epub_id="test",
+            source_language=Language.ENGLISH,
+            xhtml_extractions=[
+                XhtmlExtraction(
+                    xhtml_id="x1", xhtml_path="ch1.xhtml",
+                    text_units=[], raw_text="Content.",
+                ),
+            ],
+        )
+        input_data = PreprocessInput(
+            extraction_result=extraction, target_language=Language.KOREAN,
+        )
+        worker = PreprocessWorker(api_client=mock_api_client)
+
+        result = asyncio.run(worker.process(input_data))
+
+        assert result.epub_style == "Direct style."
+        mock_api_client.merge_extractions.assert_not_called()
+
+    def test_passes_chunk_styles_to_epub_merge(
+        self,
+        mock_api_client: AsyncMock,
+    ):
+        """chunk_styles are forwarded to final EPUB-level merge."""
+        mock_api_client.extract_chunk.return_value = ChunkResult(
+            summary="S.", terms={"a": "b"}, style_notes="Per-XHTML.",
+        )
+        mock_api_client.merge_extractions.return_value = ChunkResult(
+            summary="Merged.", terms={"a": "b"}, style_notes="Merged.",
+        )
+
+        extraction = ExtractionResult(
+            epub_id="test",
+            source_language=Language.ENGLISH,
+            xhtml_extractions=[
+                XhtmlExtraction(
+                    xhtml_id="x1", xhtml_path="ch1.xhtml",
+                    text_units=[], raw_text="A.",
+                ),
+                XhtmlExtraction(
+                    xhtml_id="x2", xhtml_path="ch2.xhtml",
+                    text_units=[], raw_text="B.",
+                ),
+            ],
+        )
+        input_data = PreprocessInput(
+            extraction_result=extraction, target_language=Language.KOREAN,
+        )
+        worker = PreprocessWorker(api_client=mock_api_client)
+
+        asyncio.run(worker.process(input_data))
+
+        # Final EPUB-level merge should receive chunk_styles
+        merge_kwargs = mock_api_client.merge_extractions.call_args.kwargs
+        assert "chunk_styles" in merge_kwargs
+        assert merge_kwargs["chunk_styles"] == ["Per-XHTML.", "Per-XHTML."]
+
+    def test_empty_style_notes_excluded_from_result(
+        self,
+        mock_api_client: AsyncMock,
+    ):
+        """XHTMLs with empty style_notes are not in result.style_notes."""
+        call_count = 0
+
+        async def mock_extract(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return ChunkResult(
+                summary=f"S{call_count}.",
+                terms={},
+                style_notes="Has style." if call_count == 1 else "",
+            )
+
+        mock_api_client.extract_chunk.side_effect = mock_extract
+        mock_api_client.merge_extractions.return_value = ChunkResult(
+            summary="Merged.", terms={}, style_notes="",
+        )
+
+        extraction = ExtractionResult(
+            epub_id="test",
+            source_language=Language.ENGLISH,
+            xhtml_extractions=[
+                XhtmlExtraction(
+                    xhtml_id="x1", xhtml_path="ch1.xhtml",
+                    text_units=[], raw_text="A.",
+                ),
+                XhtmlExtraction(
+                    xhtml_id="x2", xhtml_path="ch2.xhtml",
+                    text_units=[], raw_text="B.",
+                ),
+            ],
+        )
+        input_data = PreprocessInput(
+            extraction_result=extraction, target_language=Language.KOREAN,
+        )
+        worker = PreprocessWorker(api_client=mock_api_client)
+
+        result = asyncio.run(worker.process(input_data))
+
+        assert "x1" in result.style_notes
+        assert "x2" not in result.style_notes

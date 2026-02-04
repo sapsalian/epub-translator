@@ -155,3 +155,49 @@ class TestPipelineConfigFromEnv:
                 translation_max_concurrent=30,  # Explicit override
             )
             assert config.translation_max_concurrent == 30
+
+
+class TestCustomInstructions:
+    """Tests for custom_instructions field."""
+
+    def test_default_empty(self):
+        """custom_instructions defaults to empty string."""
+        config = PipelineConfig(
+            source_language=Language.ENGLISH,
+            target_language=Language.KOREAN,
+        )
+        assert config.custom_instructions == ""
+
+    def test_custom_value(self):
+        """custom_instructions can be set explicitly."""
+        config = PipelineConfig(
+            source_language=Language.ENGLISH,
+            target_language=Language.KOREAN,
+            custom_instructions="Prefer concise sentences.",
+        )
+        assert config.custom_instructions == "Prefer concise sentences."
+
+    def test_env_override(self):
+        """PIPELINE_CUSTOM_INSTRUCTIONS overrides custom_instructions."""
+        with patch.dict(
+            os.environ,
+            {f"{ENV_PREFIX}CUSTOM_INSTRUCTIONS": "Use formal register."},
+        ):
+            config = PipelineConfig.from_env(
+                source_language=Language.ENGLISH,
+                target_language=Language.KOREAN,
+            )
+            assert config.custom_instructions == "Use formal register."
+
+    def test_kwargs_override_env(self):
+        """Explicit kwarg takes precedence over env var."""
+        with patch.dict(
+            os.environ,
+            {f"{ENV_PREFIX}CUSTOM_INSTRUCTIONS": "From env."},
+        ):
+            config = PipelineConfig.from_env(
+                source_language=Language.ENGLISH,
+                target_language=Language.KOREAN,
+                custom_instructions="From kwarg.",
+            )
+            assert config.custom_instructions == "From kwarg."

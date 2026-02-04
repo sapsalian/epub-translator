@@ -303,3 +303,130 @@ class TestTranslate:
         assert len(result) == 2
         assert result[0] == "번역된 텍스트"
         assert result[1] == ""  # Missing ID returns empty string
+
+
+# =============================================================================
+# Style Notes Tests
+# =============================================================================
+
+
+class TestStyleNotes:
+    """Tests for style_notes handling in extraction, merge, and translation."""
+
+    def test_extract_chunk_parses_style_notes(self, client, mock_openai):
+        """style_notes is parsed from extraction response."""
+        mock_openai.return_value.responses.create = AsyncMock(
+            return_value=_mock_create_response({
+                "summary": "A greeting scene.",
+                "terms": [],
+                "style_notes": "Third-person limited, present tense.",
+            })
+        )
+
+        result = asyncio.run(
+            client.extract_chunk(
+                chunk_text="Hello world!",
+                source_language=Language.ENGLISH,
+                target_language=Language.KOREAN,
+            )
+        )
+
+        assert result.style_notes == "Third-person limited, present tense."
+
+    def test_extract_chunk_style_notes_defaults_empty(self, client, mock_openai):
+        """style_notes defaults to empty string if missing from response."""
+        mock_openai.return_value.responses.create = AsyncMock(
+            return_value=_mock_create_response({
+                "summary": "Summary.",
+                "terms": [],
+            })
+        )
+
+        result = asyncio.run(
+            client.extract_chunk(
+                chunk_text="Text.",
+                source_language=Language.ENGLISH,
+                target_language=Language.KOREAN,
+            )
+        )
+
+        assert result.style_notes == ""
+
+    def test_merge_parses_style_notes(self, client, mock_openai):
+        """style_notes is parsed from merge response."""
+        mock_openai.return_value.responses.create = AsyncMock(
+            return_value=_mock_create_response({
+                "summary": "Combined summary.",
+                "terms": [],
+                "style_notes": "Unified style guide.",
+            })
+        )
+
+        result = asyncio.run(
+            client.merge_extractions(
+                chunk_summaries=["S1.", "S2."],
+                chunk_terms=[{}, {}],
+                source_language=Language.ENGLISH,
+                target_language=Language.KOREAN,
+                chunk_styles=["Style 1.", "Style 2."],
+            )
+        )
+
+        assert result.style_notes == "Unified style guide."
+
+    def test_single_chunk_merge_preserves_style_notes(self, client):
+        """Single-chunk shortcut returns chunk_styles[0] as style_notes."""
+        result = asyncio.run(
+            client.merge_extractions(
+                chunk_summaries=["Only summary."],
+                chunk_terms=[{"term": "용어"}],
+                source_language=Language.ENGLISH,
+                target_language=Language.KOREAN,
+                chunk_styles=["Only style."],
+            )
+        )
+
+        assert result.style_notes == "Only style."
+
+    def test_single_chunk_merge_no_styles_returns_empty(self, client):
+        """Single-chunk shortcut with no chunk_styles returns empty style_notes."""
+        result = asyncio.run(
+            client.merge_extractions(
+                chunk_summaries=["Only summary."],
+                chunk_terms=[{"term": "용어"}],
+                source_language=Language.ENGLISH,
+                target_language=Language.KOREAN,
+            )
+        )
+
+        assert result.style_notes == ""
+
+    def test_translate_passes_style_guidelines_to_api(
+        self, client, mock_openai, sample_text_units
+    ):
+        """style_guidelines is included in the API input."""
+        mock_create = AsyncMock(
+            return_value=_mock_create_response({
+                "translations": [
+                    {"unit_id": "unit-001", "text": "번역1"},
+                    {"unit_id": "unit-002", "text": "번역2"},
+                ],
+            })
+        )
+        mock_openai.return_value.responses.create = mock_create
+
+        asyncio.run(
+            client.translate(
+                text_units=sample_text_units,
+                source_language=Language.ENGLISH,
+                target_language=Language.KOREAN,
+                term_dictionary={},
+                context_summary="Context",
+                style_guidelines="Use 해라체 for narrative.",
+            )
+        )
+
+        # Verify style guidelines appear in the input text
+        call_kwargs = mock_create.call_args.kwargs
+        assert "Style Guidelines" in call_kwargs["input"]
+        assert "해라체" in call_kwargs["input"]
