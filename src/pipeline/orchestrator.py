@@ -265,6 +265,7 @@ class PipelineOrchestrator:
         preprocess_input = PreprocessInput(
             extraction_result=extraction_result,
             target_language=self._config.target_language,
+            custom_instructions=self._config.custom_instructions,
             chunk_size=self._config.chunk_size,
             max_concurrent=self._config.preprocess_max_concurrent,
         )
@@ -332,6 +333,11 @@ class PipelineOrchestrator:
                 # Get summary for this XHTML
                 xhtml_summary = preprocess_result.summaries.get(xhtml.xhtml_id, "")
                 context_summary = xhtml_summary or preprocess_result.epub_summary
+                style_guidelines = self._compose_style_guidelines(
+                    xhtml_style=preprocess_result.style_notes.get(xhtml.xhtml_id, ""),
+                    epub_style=preprocess_result.epub_style,
+                    custom_instructions=self._config.custom_instructions,
+                )
 
                 task = TranslationTask(
                     epub_id=epub_id,
@@ -345,6 +351,7 @@ class PipelineOrchestrator:
                     source_language=self._config.source_language,
                     term_dictionary=preprocess_result.term_dictionary,
                     context_summary=context_summary,
+                    style_guidelines=style_guidelines,
                     batch_size=self._config.batch_size,
                     max_concurrent=1,  # Already rate-limited by outer semaphore
                 )
@@ -370,6 +377,25 @@ class PipelineOrchestrator:
         logger.info("Translation complete: %d XHTMLs translated", len(results))
 
         return list(results)
+
+    def _compose_style_guidelines(
+        self,
+        xhtml_style: str,
+        epub_style: str,
+        custom_instructions: str,
+    ) -> str:
+        """
+        Compose style guidelines from EPUB-wide style, XHTML-specific notes,
+        and user-provided custom instructions.
+        """
+        sections = []
+        if xhtml_style:
+            sections.append(f"XHTML Style Notes:\n{xhtml_style}")
+        elif epub_style:
+            sections.append(f"EPUB Style Guide:\n{epub_style}")
+        if custom_instructions:
+            sections.append(f"Custom Instructions:\n{custom_instructions}")
+        return "\n\n".join(sections)
 
     async def _run_insertion(
         self,

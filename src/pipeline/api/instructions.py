@@ -42,6 +42,8 @@ Ask yourself: "Would 10 different translators translate this term the same way w
 
 If a term already exists in the provided list, keep its translation unless it is clearly wrong in context.
 
+If Custom Instructions are provided, incorporate them into style_notes when relevant.
+
 Output must follow the provided JSON schema exactly. Do not add extra keys or commentary.
 
 ## Example
@@ -77,6 +79,8 @@ Your task is to merge multiple chunk analyses into a coherent whole:
 3. **Style Notes**: Combine style analyses into a unified style guide (3-5 sentences).
    Capture the dominant style, note variations (e.g. POV shifts, character speech patterns).
    Include a clear recommendation for the target language formality and speech style.
+
+If Custom Instructions are provided, incorporate them into the merged style_notes where appropriate.
 
 Output must follow the provided JSON schema exactly. Do not add extra keys or commentary.
 

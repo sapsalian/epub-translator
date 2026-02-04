@@ -108,6 +108,7 @@ class OpenAIClient:
         source_language: Language,
         target_language: Language,
         existing_terms: TermDict | None = None,
+        custom_instructions: str = "",
     ) -> ChunkExtraction:
         """Extract summary and terms from a text chunk."""
         if not chunk_text.strip():
@@ -118,6 +119,7 @@ class OpenAIClient:
             source_language=source_language,
             target_language=target_language,
             existing_terms=existing_terms,
+            custom_instructions=custom_instructions,
         )
 
         result = await self._call_structured(
@@ -140,6 +142,7 @@ class OpenAIClient:
         chunk_terms: list[TermDict],
         source_language: Language,
         target_language: Language,
+        custom_instructions: str = "",
     ) -> MergedExtraction:
         """Merge multiple chunk extractions into a unified result."""
         if not chunk_summaries:
@@ -156,6 +159,7 @@ class OpenAIClient:
             chunk_terms=chunk_terms,
             source_language=source_language,
             target_language=target_language,
+            custom_instructions=custom_instructions,
         )
 
         result = await self._call_structured(

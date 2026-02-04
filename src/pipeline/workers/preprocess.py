@@ -51,9 +51,10 @@ DEFAULT_MAX_CONCURRENT = 5
 class ChunkResult:
     """Result from processing a single text chunk."""
 
-    def __init__(self, summary: str, terms: TermDict) -> None:
+    def __init__(self, summary: str, terms: TermDict, style_notes: str = "") -> None:
         self.summary = summary
         self.terms = terms
+        self.style_notes = style_notes
 
 
 # =============================================================================
@@ -77,6 +78,7 @@ class PreprocessAPIClient(Protocol):
         source_language: Language,
         target_language: Language,
         existing_terms: TermDict | None = None,
+        custom_instructions: str = "",
     ) -> ChunkResult:
         """
         Extract summary and terms from a text chunk.
@@ -86,6 +88,7 @@ class PreprocessAPIClient(Protocol):
             source_language: Source language.
             target_language: Target language.
             existing_terms: Already extracted terms for consistency.
+            custom_instructions: Custom style instructions to incorporate.
 
         Returns:
             ChunkResult with summary and terms.
@@ -98,6 +101,7 @@ class PreprocessAPIClient(Protocol):
         chunk_terms: list[TermDict],
         source_language: Language,
         target_language: Language,
+        custom_instructions: str = "",
     ) -> ChunkResult:
         """
         Merge multiple chunk extractions into a unified result.
@@ -107,6 +111,7 @@ class PreprocessAPIClient(Protocol):
             chunk_terms: List of term dicts from each chunk (source -> target).
             source_language: Source language.
             target_language: Target language.
+            custom_instructions: Custom style instructions to incorporate.
 
         Returns:
             ChunkResult with combined summary and merged terms.
@@ -126,6 +131,9 @@ class PreprocessInput(BaseModel):
         description="Result from ExtractionWorker"
     )
     target_language: Language = Field(description="Target language for translation")
+    custom_instructions: str = Field(
+        default="", description="Custom style instructions to incorporate"
+    )
     chunk_size: int = Field(
         default=DEFAULT_CHUNK_SIZE,
         description="Maximum characters per chunk for API calls",
@@ -184,6 +192,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         """
         extraction = input_data.extraction_result
         target_language = input_data.target_language
+        custom_instructions = input_data.custom_instructions
         chunk_size = input_data.chunk_size
         max_concurrent = input_data.max_concurrent
 
@@ -225,6 +234,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     target_language=target_language,
                     chunk_size=chunk_size,
                     semaphore=semaphore,
+                    custom_instructions=custom_instructions,
                 )
                 for xhtml in xhtmls_with_content
             ]
@@ -232,13 +242,16 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
 
             # Collect results
             all_summaries: dict[str, str] = {}
+            all_style_notes: dict[str, str] = {}
             all_xhtml_terms: list[TermDict] = []
             all_xhtml_summaries: list[str] = []
 
-            for xhtml, (xhtml_summary, xhtml_terms) in zip(
+            for xhtml, (xhtml_summary, xhtml_terms, xhtml_style) in zip(
                 xhtmls_with_content, xhtml_results
             ):
                 all_summaries[xhtml.xhtml_id] = xhtml_summary
+                if xhtml_style:
+                    all_style_notes[xhtml.xhtml_id] = xhtml_style
                 if xhtml_summary:
                     all_xhtml_summaries.append(xhtml_summary)
                 if xhtml_terms:
@@ -246,6 +259,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
 
             # Merge all XHTML terms into final EPUB term dictionary
             epub_summary = ""
+            epub_style = ""
             if len(all_xhtml_terms) > 1:
                 # Use merge API to deduplicate and resolve conflicts
                 # Include summaries for better context during term conflict resolution
@@ -254,14 +268,18 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     chunk_terms=all_xhtml_terms,
                     source_language=extraction.source_language,
                     target_language=target_language,
+                    custom_instructions=custom_instructions,
                 )
                 final_mappings = merged.terms
                 epub_summary = merged.summary
+                epub_style = merged.style_notes
             elif len(all_xhtml_terms) == 1:
                 # Single XHTML - use directly
                 final_mappings = all_xhtml_terms[0]
                 # Use single XHTML summary as epub summary
                 epub_summary = all_xhtml_summaries[0] if all_xhtml_summaries else ""
+                # Use single XHTML style as epub style
+                epub_style = next(iter(all_style_notes.values()), "")
             else:
                 final_mappings = {}
 
@@ -276,6 +294,8 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 term_dictionary=term_dictionary,
                 summaries=all_summaries,
                 epub_summary=epub_summary,
+                style_notes=all_style_notes,
+                epub_style=epub_style,
             )
 
             self.logger.info(
@@ -299,7 +319,8 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         target_language: Language,
         chunk_size: int,
         semaphore: asyncio.Semaphore,
-    ) -> tuple[str, TermDict]:
+        custom_instructions: str,
+    ) -> tuple[str, TermDict, str]:
         """
         Process a single XHTML file with parallel chunk processing.
 
@@ -313,12 +334,12 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
             semaphore: Semaphore for API call concurrency control.
 
         Returns:
-            Tuple of (summary, terms_dict).
+            Tuple of (summary, terms_dict, style_notes).
         """
         chunks = self._split_into_chunks(xhtml.raw_text, chunk_size)
 
         if not chunks:
-            return "", {}
+            return "", {}, ""
 
         # Process all chunks in parallel with semaphore for rate limiting
         chunk_tasks = [
@@ -327,6 +348,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 source_language=source_language,
                 target_language=target_language,
                 semaphore=semaphore,
+                custom_instructions=custom_instructions,
             )
             for chunk in chunks
         ]
@@ -335,11 +357,14 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         # Collect chunk results
         chunk_summaries: list[str] = []
         chunk_terms: list[TermDict] = []
+        chunk_styles: list[str] = []
 
         for result in chunk_results:
             if result.summary:
                 chunk_summaries.append(result.summary)
             chunk_terms.append(result.terms)
+            if result.style_notes:
+                chunk_styles.append(result.style_notes)
 
         # Merge chunks for this XHTML if multiple
         if len(chunks) > 1:
@@ -348,14 +373,16 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 chunk_terms=chunk_terms,
                 source_language=source_language,
                 target_language=target_language,
+                custom_instructions=custom_instructions,
             )
-            return merged.summary, merged.terms
+            return merged.summary, merged.terms, merged.style_notes
 
         # Single chunk - return as-is
         summary = chunk_summaries[0] if chunk_summaries else ""
         terms = chunk_terms[0] if chunk_terms else {}
+        style_notes = chunk_styles[0] if chunk_styles else ""
 
-        return summary, terms
+        return summary, terms, style_notes
 
     async def _extract_chunk_with_semaphore(
         self,
@@ -363,6 +390,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         source_language: Language,
         target_language: Language,
         semaphore: asyncio.Semaphore,
+        custom_instructions: str,
     ) -> ChunkResult:
         """
         Extract chunk with semaphore for rate limiting.
@@ -382,6 +410,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 source_language=source_language,
                 target_language=target_language,
                 existing_terms=None,
+                custom_instructions=custom_instructions,
             )
 
     def _split_into_chunks(self, text: str, chunk_size: int) -> list[str]:

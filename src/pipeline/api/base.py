@@ -42,6 +42,7 @@ class PreprocessClient(Protocol):
         source_language: Language,
         target_language: Language,
         existing_terms: TermDict | None = None,
+        custom_instructions: str = "",
     ) -> ChunkExtraction:
         """
         Extract summary and terms from a text chunk.
@@ -51,6 +52,7 @@ class PreprocessClient(Protocol):
             source_language: Source language.
             target_language: Target language.
             existing_terms: Already extracted terms for consistency.
+            custom_instructions: Custom style instructions to incorporate.
 
         Returns:
             ChunkExtraction with summary and terms.
@@ -63,6 +65,7 @@ class PreprocessClient(Protocol):
         chunk_terms: list[TermDict],
         source_language: Language,
         target_language: Language,
+        custom_instructions: str = "",
     ) -> MergedExtraction:
         """
         Merge multiple chunk extractions into a unified result.
@@ -72,6 +75,7 @@ class PreprocessClient(Protocol):
             chunk_terms: List of term dicts from each chunk (source -> target).
             source_language: Source language.
             target_language: Target language.
+            custom_instructions: Custom style instructions to incorporate.
 
         Returns:
             MergedExtraction with combined summary and merged terms.

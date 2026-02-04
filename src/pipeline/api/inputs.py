@@ -20,6 +20,7 @@ def build_chunk_extraction_input(
     source_language: Language,
     target_language: Language,
     existing_terms: TermDict | None = None,
+    custom_instructions: str = "",
 ) -> str:
     existing_section = ""
     if existing_terms:
@@ -28,10 +29,15 @@ def build_chunk_extraction_input(
             f"{_format_term_list(existing_terms)}"
         )
 
+    custom_section = ""
+    if custom_instructions:
+        custom_section = f"\n\nCustom Instructions:\n{custom_instructions}"
+
     return (
         f"Source language: {source_language.value}\n"
         f"Target language: {target_language.value}"
         f"{existing_section}\n"
+        f"{custom_section}\n"
         f"\nText to analyze:\n"
         f"{chunk_text}"
     )
@@ -42,6 +48,7 @@ def build_meta_merge_input(
     chunk_terms: list[TermDict],
     source_language: Language,
     target_language: Language,
+    custom_instructions: str = "",
 ) -> str:
     summaries_section = "\n".join(
         f"\nChunk {i}:\n{summary}"
@@ -58,9 +65,14 @@ def build_meta_merge_input(
         )
         terms_section = f"\n\n--- Collected Terms ---\n{term_lines}"
 
+    custom_section = ""
+    if custom_instructions:
+        custom_section = f"\n\nCustom Instructions:\n{custom_instructions}"
+
     return (
         f"Source language: {source_language.value}\n"
         f"Target language: {target_language.value}\n"
+        f"{custom_section}\n"
         f"\n--- Chunk Summaries ---"
         f"{summaries_section}"
         f"{terms_section}"
