@@ -86,6 +86,10 @@ class PipelineConfig(BaseModel):
         default=4000,
         description="Maximum characters per translation API call",
     )
+    custom_instructions: str = Field(
+        default="",
+        description="Custom translation instructions appended to style guidelines",
+    )
 
     # Concurrency settings
     preprocess_max_concurrent: int = Field(
@@ -141,6 +145,7 @@ class PipelineConfig(BaseModel):
         - PIPELINE_BASE_DELAY: Base delay for retries
         - PIPELINE_OUTPUT_DIR: Output directory path
         - PIPELINE_CHECKPOINT_DIR: Checkpoint directory path
+        - PIPELINE_CUSTOM_INSTRUCTIONS: Custom translation instructions
 
         Args:
             source_language: Source language. If None, reads from env.
@@ -188,6 +193,8 @@ class PipelineConfig(BaseModel):
         # String fields
         if model := os.environ.get(f"{ENV_PREFIX}MODEL"):
             overrides["model"] = model
+        if custom_instructions := os.environ.get(f"{ENV_PREFIX}CUSTOM_INSTRUCTIONS"):
+            overrides["custom_instructions"] = custom_instructions
 
         # Integer fields
         int_fields = [
