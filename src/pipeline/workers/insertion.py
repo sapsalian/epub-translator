@@ -246,7 +246,7 @@ class InsertionWorker(Worker[InsertionInput, InsertionResult]):
 
                 content: bytes = zin.read(item.filename)
 
-                if item.filename.endswith((".xhtml", ".html")):
+                if item.filename.endswith((".xhtml", ".html", ".htm")):
                     # Check if this XHTML has translations
                     if item.filename in xpath_map:
                         new_content = self._process_xhtml(
