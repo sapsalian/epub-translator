@@ -22,25 +22,23 @@ def build_chunk_extraction_input(
     existing_terms: TermDict | None = None,
     custom_instructions: str = "",
 ) -> str:
-    existing_section = ""
+    sections = [
+        f"Source language: {source_language.value}\n"
+        f"Target language: {target_language.value}",
+    ]
+
     if existing_terms:
-        existing_section = (
-            f"\n\nAlready identified terms (maintain consistency):\n"
+        sections.append(
+            f"Already identified terms (maintain consistency):\n"
             f"{_format_term_list(existing_terms)}"
         )
 
-    custom_section = ""
     if custom_instructions:
-        custom_section = f"\n\nCustom Instructions:\n{custom_instructions}"
+        sections.append(f"Custom Instructions:\n{custom_instructions}")
 
-    return (
-        f"Source language: {source_language.value}\n"
-        f"Target language: {target_language.value}"
-        f"{existing_section}\n"
-        f"{custom_section}\n"
-        f"\nText to analyze:\n"
-        f"{chunk_text}"
-    )
+    sections.append(f"Text to analyze:\n{chunk_text}")
+
+    return "\n\n".join(sections)
 
 
 def build_meta_merge_input(
@@ -51,43 +49,38 @@ def build_meta_merge_input(
     chunk_styles: list[str] | None = None,
     custom_instructions: str = "",
 ) -> str:
-    summaries_section = "\n".join(
-        f"\nChunk {i}:\n{summary}"
+    sections = [
+        f"Source language: {source_language.value}\n"
+        f"Target language: {target_language.value}",
+    ]
+
+    if custom_instructions:
+        sections.append(f"Custom Instructions:\n{custom_instructions}")
+
+    summaries_text = "\n".join(
+        f"Chunk {i}:\n{summary}"
         for i, summary in enumerate(chunk_summaries, 1)
     )
+    sections.append(f"--- Chunk Summaries ---\n{summaries_text}")
 
     all_terms = _collect_chunk_terms(chunk_terms)
-    terms_section = ""
     if all_terms:
         term_lines = "\n".join(
             f"  - {source} -> {targets[0]}" if len(targets) == 1
             else f"  - {source} -> {' / '.join(targets)} (conflict)"
             for source, targets in sorted(all_terms.items())
         )
-        terms_section = f"\n\n--- Collected Terms ---\n{term_lines}"
+        sections.append(f"--- Collected Terms ---\n{term_lines}")
 
-    styles_section = ""
     non_empty_styles = [s for s in (chunk_styles or []) if s]
     if non_empty_styles:
         style_lines = "\n".join(
-            f"\nChunk {i}:\n{style}"
+            f"Chunk {i}:\n{style}"
             for i, style in enumerate(non_empty_styles, 1)
         )
-        styles_section = f"\n\n--- Chunk Style Notes ---{style_lines}"
+        sections.append(f"--- Chunk Style Notes ---\n{style_lines}")
 
-    custom_section = ""
-    if custom_instructions:
-        custom_section = f"\n\nCustom Instructions:\n{custom_instructions}"
-
-    return (
-        f"Source language: {source_language.value}\n"
-        f"Target language: {target_language.value}\n"
-        f"{custom_section}\n"
-        f"\n--- Chunk Summaries ---"
-        f"{summaries_section}"
-        f"{terms_section}"
-        f"{styles_section}"
-    )
+    return "\n\n".join(sections)
 
 
 def build_translation_input(
@@ -99,35 +92,32 @@ def build_translation_input(
     context_summary: str,
     style_guidelines: str = "",
 ) -> str:
-    terms_section = ""
+    sections = [
+        f"Translate from {source_language.value} to {target_language.value}.",
+    ]
+
     if term_dictionary:
-        terms_section = (
-            f"\n\nTerm Dictionary (use these translations):\n"
+        sections.append(
+            f"Term Dictionary (use these translations):\n"
             f"{_format_term_list(term_dictionary, limit=100)}"
         )
 
-    style_section = ""
     if style_guidelines:
-        style_section = f"\n\nStyle Guidelines:\n{style_guidelines}"
+        sections.append(f"Style Guidelines:\n{style_guidelines}")
 
-    context_section = ""
     if context_summary:
-        context_section = f"\n\nContext:\n{context_summary}"
+        sections.append(f"Context:\n{context_summary}")
 
     text_lines = "\n".join(
         f"[{unit_id}] {text}" for unit_id, text in zip(unit_ids, texts)
     )
-
-    return (
-        f"Translate from {source_language.value} to {target_language.value}."
-        f"{terms_section}"
-        f"{style_section}"
-        f"{context_section}\n"
-        f"\n--- Texts to Translate ---\n"
+    sections.append(
+        f"--- Texts to Translate ---\n"
         f"(Each line: [unit_id] text)\n"
-        f"{text_lines}\n"
-        f"\nIMPORTANT: Preserve all placeholder tags ({{{{1}}}}, {{{{/1}}}}, {{{{2/}}}}, etc.) exactly."
+        f"{text_lines}"
     )
+
+    return "\n\n".join(sections)
 
 
 def _collect_chunk_terms(

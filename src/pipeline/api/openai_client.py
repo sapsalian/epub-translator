@@ -39,6 +39,14 @@ logger = logging.getLogger(__name__)
 _RETRY_AFTER_PATTERN = re.compile(r"try again in (\d+\.?\d*)\s*(ms|s)\b")
 _RESET_TIME_PATTERN = re.compile(r"(?:(\d+)m)?(\d+(?:\.\d+)?)?s?$")
 
+_EXTENDED_CACHE_MODELS = frozenset({
+    "gpt-4.1",
+    "gpt-5", "gpt-5-codex",
+    "gpt-5.1", "gpt-5.1-codex", "gpt-5.1-codex-mini",
+    "gpt-5.1-codex-max", "gpt-5.1-chat-latest",
+    "gpt-5.2",
+})
+
 
 def _parse_reset_time(value: str) -> float | None:
     """Parse OpenAI rate limit reset time format (e.g., '6m0s', '1s', '500ms')."""
@@ -123,6 +131,13 @@ class OpenAIClient:
         if not chunk_text.strip():
             return ChunkExtraction(summary="", terms={})
 
+        logger.info(
+            "LLM extract_chunk (chars=%d, existing_terms=%d, custom=%s)",
+            len(chunk_text),
+            len(existing_terms or {}),
+            bool(custom_instructions),
+        )
+
         input_text = build_chunk_extraction_input(
             chunk_text=chunk_text,
             source_language=source_language,
@@ -131,10 +146,12 @@ class OpenAIClient:
             custom_instructions=custom_instructions,
         )
 
+        cache_key = f"extract:{source_language.value}:{target_language.value}"
         result = await self._call_structured(
             instructions=CHUNK_EXTRACTION,
             input_text=input_text,
             schema=CHUNK_EXTRACTION_SCHEMA,
+            cache_key=cache_key,
         )
 
         terms = {e["source"]: e["target"] for e in result.get("terms", [])}
@@ -165,6 +182,14 @@ class OpenAIClient:
                 style_notes=(chunk_styles[0] if chunk_styles else ""),
             )
 
+        logger.info(
+            "LLM merge_extractions (chunks=%d, term_sets=%d, styles=%d, custom=%s)",
+            len(chunk_summaries),
+            len(chunk_terms),
+            len(chunk_styles or []),
+            bool(custom_instructions),
+        )
+
         input_text = build_meta_merge_input(
             chunk_summaries=chunk_summaries,
             chunk_terms=chunk_terms,
@@ -174,10 +199,12 @@ class OpenAIClient:
             custom_instructions=custom_instructions,
         )
 
+        cache_key = f"merge:{source_language.value}:{target_language.value}"
         result = await self._call_structured(
             instructions=META_MERGE,
             input_text=input_text,
             schema=MERGE_SCHEMA,
+            cache_key=cache_key,
         )
 
         terms = {e["source"]: e["target"] for e in result.get("terms", [])}
@@ -203,6 +230,16 @@ class OpenAIClient:
 
         unit_ids = [unit.unit_id for unit in text_units]
         texts = [unit.tagged_text for unit in text_units]
+        total_chars = sum(len(text) for text in texts)
+
+        logger.info(
+            "LLM translate (units=%d, chars=%d, terms=%d, style=%s, context=%s)",
+            len(text_units),
+            total_chars,
+            len(term_dictionary),
+            bool(style_guidelines),
+            bool(context_summary),
+        )
 
         input_text = build_translation_input(
             unit_ids=unit_ids,
@@ -214,10 +251,12 @@ class OpenAIClient:
             style_guidelines=style_guidelines,
         )
 
+        cache_key = f"translate:{source_language.value}:{target_language.value}"
         result = await self._call_structured(
             instructions=TRANSLATION,
             input_text=input_text,
             schema=TRANSLATION_SCHEMA,
+            cache_key=cache_key,
         )
 
         translations_map = {
@@ -242,6 +281,7 @@ class OpenAIClient:
         instructions: str,
         input_text: str,
         schema: dict,
+        cache_key: str = "",
     ) -> dict:
         """
         Make a structured API call using OpenAI Responses API.
@@ -250,6 +290,7 @@ class OpenAIClient:
             instructions: Static instructions (cached by API).
             input_text: Dynamic input data.
             schema: JSON schema dict for structured output format.
+            cache_key: Prompt cache key for grouping similar requests.
 
         Returns:
             Parsed JSON response as dict.
@@ -261,12 +302,17 @@ class OpenAIClient:
         )
         async def _make_request() -> dict:
             try:
-                response = await self._client.responses.create(
-                    model=self._model,
-                    instructions=instructions,
-                    input=input_text,
-                    text={"format": schema},
-                )
+                kwargs: dict = {
+                    "model": self._model,
+                    "instructions": instructions,
+                    "input": input_text,
+                    "text": {"format": schema},
+                }
+                if self._model in _EXTENDED_CACHE_MODELS:
+                    kwargs["prompt_cache_retention"] = "24h"
+                if cache_key:
+                    kwargs["prompt_cache_key"] = cache_key
+                response = await self._client.responses.create(**kwargs)
                 return json.loads(response.output_text)
             except OpenAIRateLimitError as e:
                 raise RateLimitError(
