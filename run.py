@@ -18,14 +18,11 @@ import sys
 from pathlib import Path
 
 from src.pipeline import Language, PipelineConfig, PipelineOrchestrator
+from src.pipeline.logging import setup_logging
 
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],
-)
+# Configure logging (pipeline-wide)
+setup_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 
@@ -106,8 +103,8 @@ async def main():
 
     # Set debug logging if requested
     if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logging.getLogger("src.pipeline").setLevel(logging.DEBUG)
+        setup_logging(level="DEBUG")
+        logging.getLogger("httpx").setLevel(logging.INFO)
 
     # Validate EPUB path
     epub_path = Path(args.epub_path)

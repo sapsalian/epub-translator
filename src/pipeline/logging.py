@@ -81,6 +81,9 @@ def setup_logging(
     # Prevent propagation to root logger (avoids duplicate logs)
     root_logger.propagate = False
 
+    # Silence noisy third-party loggers by default
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 def get_logger(name: str) -> logging.Logger:
     """

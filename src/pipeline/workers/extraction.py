@@ -167,10 +167,17 @@ class ExtractionWorker(Worker[ExtractionInput, ExtractionResult]):
         with ZipFile(input_data.epub_path, "r") as zf:
             ordered_paths = get_spine_xhtml_paths_by_order(zf)
 
-            for xhtml_path in ordered_paths:
+            total_paths = len(ordered_paths)
+            for i, xhtml_path in enumerate(ordered_paths, 1):
                 matcher.reset()
 
                 try:
+                    self.logger.info(
+                        "Extracting XHTML %d/%d: %s",
+                        i,
+                        total_paths,
+                        xhtml_path,
+                    )
                     extraction = self._extract_single_xhtml(
                         zf=zf,
                         xhtml_path=xhtml_path.as_posix(),

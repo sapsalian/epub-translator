@@ -233,6 +233,8 @@ class InsertionWorker(Worker[InsertionInput, InsertionResult]):
                 xpath_map[xhtml_path] = []
             xpath_map[xhtml_path].append((unit.location.xpath, unit_id))
 
+        total_xhtmls = len(xpath_map)
+        processed_xhtmls = 0
         with ZipFile(input_path, "r") as zin, ZipFile(output_path, "w") as zout:
             # Write mimetype first without compression (EPUB spec)
             if "mimetype" in zin.namelist():
@@ -249,6 +251,13 @@ class InsertionWorker(Worker[InsertionInput, InsertionResult]):
                 if item.filename.endswith((".xhtml", ".html", ".htm")):
                     # Check if this XHTML has translations
                     if item.filename in xpath_map:
+                        processed_xhtmls += 1
+                        self.logger.info(
+                            "Inserting XHTML %d/%d: %s",
+                            processed_xhtmls,
+                            total_xhtmls,
+                            item.filename,
+                        )
                         new_content = self._process_xhtml(
                             content=content,
                             xhtml_path=item.filename,

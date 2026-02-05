@@ -251,10 +251,12 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         Returns:
             List of all translated units in order.
         """
+        self.logger.info("Translating %d batch(es)", len(batches))
         tasks = [
             self._translate_batch_with_semaphore(
                 batch=batch,
                 batch_index=i,
+                total_batches=len(batches),
                 source_language=source_language,
                 target_language=target_language,
                 term_dictionary=term_dictionary,
@@ -279,6 +281,7 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
         self,
         batch: list[TextUnit],
         batch_index: int,
+        total_batches: int,
         source_language: Language,
         target_language: Language,
         term_dictionary: TermDict,
@@ -307,8 +310,11 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
             List of translated units for this batch.
         """
         async with semaphore:
-            self.logger.debug(
-                "Translating batch %d (%d units)", batch_index, len(batch)
+            self.logger.info(
+                "Translating batch %d/%d (%d units)",
+                batch_index + 1,
+                total_batches,
+                len(batch),
             )
 
             # Initial translation
@@ -359,6 +365,13 @@ class TranslationWorker(AsyncWorker[TranslationInput, TranslationResult]):
                 for unit, translation in zip(empty_units, retry_translations):
                     if translation.strip():
                         result_map[unit.unit_id] = translation
+
+            self.logger.info(
+                "Translated batch %d/%d (%d units)",
+                batch_index + 1,
+                total_batches,
+                len(batch),
+            )
 
             # Log remaining empty translations
             remaining_empty = sum(

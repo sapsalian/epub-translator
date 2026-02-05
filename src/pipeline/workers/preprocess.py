@@ -229,6 +229,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                 )
 
             # Process all XHTMLs in parallel (with semaphore for API rate limiting)
+            total_xhtmls = len(xhtmls_with_content)
             xhtml_tasks = [
                 self._process_xhtml(
                     xhtml=xhtml,
@@ -237,8 +238,10 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     chunk_size=chunk_size,
                     semaphore=semaphore,
                     custom_instructions=custom_instructions,
+                    index=i,
+                    total=total_xhtmls,
                 )
-                for xhtml in xhtmls_with_content
+                for i, xhtml in enumerate(xhtmls_with_content, 1)
             ]
             xhtml_results = await asyncio.gather(*xhtml_tasks)
 
@@ -324,6 +327,8 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         chunk_size: int,
         semaphore: asyncio.Semaphore,
         custom_instructions: str,
+        index: int,
+        total: int,
     ) -> tuple[str, TermDict, str]:
         """
         Process a single XHTML file with parallel chunk processing.
@@ -341,6 +346,13 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
             Tuple of (summary, terms_dict, style_notes).
         """
         chunks = self._split_into_chunks(xhtml.raw_text, chunk_size)
+        self.logger.info(
+            "Preprocess XHTML %d/%d: %s (chunks=%d)",
+            index,
+            total,
+            xhtml.xhtml_id,
+            len(chunks),
+        )
 
         if not chunks:
             return "", {}, ""
