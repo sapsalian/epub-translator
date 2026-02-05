@@ -9,7 +9,7 @@ from src.pipeline.models import Language, TermDict
 
 
 def _format_term_list(terms: TermDict, limit: int = 0) -> str:
-    items = list(terms.items())
+    items = sorted(terms.items())
     if limit:
         items = items[:limit]
     return "\n".join(f"  - {source} -> {target}" for source, target in items)
@@ -62,7 +62,7 @@ def build_meta_merge_input(
         term_lines = "\n".join(
             f"  - {source} -> {targets[0]}" if len(targets) == 1
             else f"  - {source} -> {' / '.join(targets)} (conflict)"
-            for source, targets in all_terms.items()
+            for source, targets in sorted(all_terms.items())
         )
         terms_section = f"\n\n--- Collected Terms ---\n{term_lines}"
 
@@ -99,14 +99,6 @@ def build_translation_input(
     context_summary: str,
     style_guidelines: str = "",
 ) -> str:
-    context_section = ""
-    if context_summary:
-        context_section = f"\n\nContext:\n{context_summary}"
-
-    style_section = ""
-    if style_guidelines:
-        style_section = f"\n\nStyle Guidelines:\n{style_guidelines}"
-
     terms_section = ""
     if term_dictionary:
         terms_section = (
@@ -114,15 +106,23 @@ def build_translation_input(
             f"{_format_term_list(term_dictionary, limit=100)}"
         )
 
+    style_section = ""
+    if style_guidelines:
+        style_section = f"\n\nStyle Guidelines:\n{style_guidelines}"
+
+    context_section = ""
+    if context_summary:
+        context_section = f"\n\nContext:\n{context_summary}"
+
     text_lines = "\n".join(
         f"[{unit_id}] {text}" for unit_id, text in zip(unit_ids, texts)
     )
 
     return (
         f"Translate from {source_language.value} to {target_language.value}."
-        f"{context_section}"
+        f"{terms_section}"
         f"{style_section}"
-        f"{terms_section}\n"
+        f"{context_section}\n"
         f"\n--- Texts to Translate ---\n"
         f"(Each line: [unit_id] text)\n"
         f"{text_lines}\n"
