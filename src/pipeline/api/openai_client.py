@@ -9,7 +9,13 @@ import logging
 import os
 import re
 
-from openai import AsyncOpenAI, APIError, RateLimitError as OpenAIRateLimitError
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AsyncOpenAI,
+    RateLimitError as OpenAIRateLimitError,
+)
 
 from src.pipeline.models import Language, TermDict, TextUnit
 
@@ -30,7 +36,7 @@ from .schemas import CHUNK_EXTRACTION_SCHEMA, MERGE_SCHEMA, TRANSLATION_SCHEMA
 
 logger = logging.getLogger(__name__)
 
-_RETRY_AFTER_PATTERN = re.compile(r"try again in (\d+\.?\d*)")
+_RETRY_AFTER_PATTERN = re.compile(r"try again in (\d+\.?\d*)\s*(ms|s)\b")
 _RESET_TIME_PATTERN = re.compile(r"(?:(\d+)m)?(\d+(?:\.\d+)?)?s?$")
 
 
@@ -68,7 +74,10 @@ def _parse_retry_after(error: OpenAIRateLimitError) -> float | None:
 
     match = _RETRY_AFTER_PATTERN.search(str(error))
     if match:
-        return float(match.group(1))
+        value = float(match.group(1))
+        if match.group(2) == "ms":
+            value /= 1000.0
+        return value
 
     if hasattr(error, "response") and error.response is not None:
         reset_tokens = error.response.headers.get("x-ratelimit-reset-tokens")
@@ -98,7 +107,7 @@ class OpenAIClient:
                 "Set OPENAI_API_KEY environment variable or pass api_key parameter."
             )
 
-        self._client = AsyncOpenAI(api_key=self._api_key)
+        self._client = AsyncOpenAI(api_key=self._api_key, max_retries=0)
         self._model = model
         self._retry_config = retry_config or RetryConfig()
 
@@ -263,6 +272,8 @@ class OpenAIClient:
                 raise RateLimitError(
                     str(e), retry_after=_parse_retry_after(e)
                 ) from e
+            except (APIConnectionError, APITimeoutError) as e:
+                raise TransientAPIError(str(e)) from e
             except APIError as e:
                 if e.status_code and e.status_code >= 500:
                     raise TransientAPIError(str(e)) from e

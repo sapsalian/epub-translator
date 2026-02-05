@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.pipeline.api.openai_client import OpenAIClient
+from src.pipeline.api.openai_client import OpenAIClient, _parse_retry_after
 from src.pipeline.api.retry import RetryConfig
 from src.pipeline.models import Language, TextLocation, TextUnit
 
@@ -71,14 +71,14 @@ class TestOpenAIClientInit:
         """Initialize with explicit API key."""
         client = OpenAIClient(api_key="explicit-key")
 
-        mock_openai.assert_called_once_with(api_key="explicit-key")
+        mock_openai.assert_called_once_with(api_key="explicit-key", max_retries=0)
 
     def test_init_with_env_var(self, mock_openai):
         """Initialize with environment variable."""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "env-key"}):
             client = OpenAIClient()
 
-        mock_openai.assert_called_once_with(api_key="env-key")
+        mock_openai.assert_called_once_with(api_key="env-key", max_retries=0)
 
     def test_init_without_key_raises(self, mock_openai):
         """Raises error if no API key provided."""
@@ -430,3 +430,97 @@ class TestStyleNotes:
         call_kwargs = mock_create.call_args.kwargs
         assert "Style Guidelines" in call_kwargs["input"]
         assert "해라체" in call_kwargs["input"]
+
+
+# =============================================================================
+# Retry-After Parsing Tests
+# =============================================================================
+
+
+class TestParseRetryAfter:
+    """Tests for _parse_retry_after error message parsing."""
+
+    def _make_error(self, message: str) -> MagicMock:
+        """Create a mock OpenAI RateLimitError with a message."""
+        error = MagicMock()
+        error.__str__ = lambda self: message
+        error.response = None
+        return error
+
+    def test_parses_seconds(self):
+        """Parses 'try again in 1.708s' as 1.708 seconds."""
+        error = self._make_error(
+            "Rate limit reached. Please try again in 1.708s."
+        )
+        assert _parse_retry_after(error) == pytest.approx(1.708)
+
+    def test_parses_milliseconds(self):
+        """Parses 'try again in 491ms' as 0.491 seconds."""
+        error = self._make_error(
+            "Rate limit reached. Please try again in 491ms."
+        )
+        assert _parse_retry_after(error) == pytest.approx(0.491)
+
+    def test_parses_integer_seconds(self):
+        """Parses 'try again in 2s' as 2.0 seconds."""
+        error = self._make_error(
+            "Rate limit reached. Please try again in 2s."
+        )
+        assert _parse_retry_after(error) == pytest.approx(2.0)
+
+    def test_parses_small_milliseconds(self):
+        """Parses 'try again in 99ms' as 0.099 seconds."""
+        error = self._make_error(
+            "Rate limit reached. Please try again in 99ms."
+        )
+        assert _parse_retry_after(error) == pytest.approx(0.099)
+
+    def test_no_match_returns_none(self):
+        """Returns None when no retry-after pattern found."""
+        error = self._make_error("Unknown error occurred.")
+        assert _parse_retry_after(error) is None
+
+
+# =============================================================================
+# Network Error Handling Tests
+# =============================================================================
+
+
+class TestNetworkErrorHandling:
+    """Tests for connection and timeout error handling."""
+
+    def test_connection_error_raises_transient(self, client, mock_openai):
+        """APIConnectionError is converted to TransientAPIError."""
+        from openai import APIConnectionError
+        from src.pipeline.api.retry import TransientAPIError
+
+        mock_openai.return_value.responses.create = AsyncMock(
+            side_effect=APIConnectionError(request=MagicMock())
+        )
+
+        with pytest.raises(TransientAPIError):
+            asyncio.run(
+                client.extract_chunk(
+                    chunk_text="Test.",
+                    source_language=Language.ENGLISH,
+                    target_language=Language.KOREAN,
+                )
+            )
+
+    def test_timeout_error_raises_transient(self, client, mock_openai):
+        """APITimeoutError is converted to TransientAPIError."""
+        from openai import APITimeoutError
+        from src.pipeline.api.retry import TransientAPIError
+
+        mock_openai.return_value.responses.create = AsyncMock(
+            side_effect=APITimeoutError(request=MagicMock())
+        )
+
+        with pytest.raises(TransientAPIError):
+            asyncio.run(
+                client.extract_chunk(
+                    chunk_text="Test.",
+                    source_language=Language.ENGLISH,
+                    target_language=Language.KOREAN,
+                )
+            )
