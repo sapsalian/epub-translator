@@ -1,5 +1,6 @@
 demo_files
 checkpoints
+uploads
 output
 __pycache__/
 .env
