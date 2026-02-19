@@ -30,17 +30,42 @@ class MainView:
                     "flat color=grey"
                 )
 
-            # Submission form
-            self._form = SubmissionForm(on_submit=self._handle_submit)
+            # Submission form area (shown by default)
+            with ui.column().classes("w-full") as self._form_area:
+                self._form = SubmissionForm(on_submit=self._handle_submit)
 
-            # Job status card (hidden until job submitted)
-            self._status_card = JobStatusCard()
+            # Status area (hidden until job submitted or restored)
+            with ui.column().classes("w-full gap-3") as self._status_area:
+                self._status_card = JobStatusCard()
+                self._new_translation_btn = ui.button(
+                    "New Translation", on_click=self._reset_to_form, icon="add"
+                ).props("outline").classes("self-start")
+                self._new_translation_btn.visible = False
 
         # Restore job from client storage (page reload resilience)
         stored_job_id = app.storage.client.get("job_id")
         if stored_job_id and job_manager.get_status(stored_job_id):
             self._job_id = stored_job_id
+            self._show_status_view()
             self._start_polling()
+        else:
+            self._show_form_view()
+
+    def _show_form_view(self):
+        self._form_area.set_visibility(True)
+        self._status_area.set_visibility(False)
+
+    def _show_status_view(self):
+        self._form_area.set_visibility(False)
+        self._status_area.set_visibility(True)
+
+    def _reset_to_form(self):
+        app.storage.client.pop("job_id", None)
+        self._job_id = None
+        self._stop_polling()
+        self._form.reset()
+        self._new_translation_btn.visible = False
+        self._show_form_view()
 
     async def _handle_submit(self, params: dict):
         job_id = uuid.uuid4().hex
@@ -56,6 +81,7 @@ class MainView:
         await job_manager.submit(job)
         self._job_id = job_id
         app.storage.client["job_id"] = job_id
+        self._show_status_view()
         self._start_polling()
         ui.notify("Job submitted! We'll email you when it's done.", type="positive")
 
@@ -75,6 +101,7 @@ class MainView:
                 return
             if job.state in (JobState.DONE, JobState.FAILED):
                 self._stop_polling()
+                self._new_translation_btn.visible = True
 
         self._polling_timer = ui.timer(2.0, poll)
 

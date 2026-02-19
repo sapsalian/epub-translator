@@ -2,7 +2,6 @@
 
 from nicegui import ui
 
-from ..jobs.manager import JobManager
 from ..jobs.models import JobInfo, JobState
 
 
@@ -13,6 +12,7 @@ class JobStatusCard:
     """
 
     def __init__(self):
+        self._download_token: str | None = None
         self._build()
 
     def _build(self):
@@ -26,6 +26,20 @@ class JobStatusCard:
             self._detail = ui.label("").classes("text-sm text-gray-500")
             self._progress_bar = ui.linear_progress(value=0.0).classes("w-full mt-2")
             self._progress_bar.visible = False
+
+            self._close_tab_note = ui.label(
+                "You can safely close this tab — translation continues on the server."
+            ).classes("text-xs text-gray-400 mt-1")
+            self._close_tab_note.visible = False
+
+            self._download_btn = ui.button(
+                "Download EPUB", icon="download", on_click=self._handle_download
+            ).props("color=positive").classes("mt-1")
+            self._download_btn.visible = False
+
+    def _handle_download(self):
+        if self._download_token:
+            ui.navigate.to(f"/download/{self._download_token}")
 
     def show(self):
         self._card.visible = True
@@ -44,6 +58,8 @@ class JobStatusCard:
                 f"Position: #{queue_position}" if queue_position > 0 else "Waiting..."
             )
             self._progress_bar.visible = False
+            self._close_tab_note.visible = True
+            self._download_btn.visible = False
 
         elif job.state == JobState.RUNNING:
             self._icon.props("name=autorenew color=orange")
@@ -53,13 +69,18 @@ class JobStatusCard:
             self._detail.text = f"{stage_label} — {pct}%"
             self._progress_bar.value = job.progress
             self._progress_bar.visible = True
+            self._close_tab_note.visible = True
+            self._download_btn.visible = False
 
         elif job.state == JobState.DONE:
             self._icon.props("name=check_circle color=green")
             self._title.text = "Translation complete!"
-            self._detail.text = "A download link has been sent to your email."
+            self._detail.text = "Download link also sent to your email."
             self._progress_bar.value = 1.0
             self._progress_bar.visible = True
+            self._close_tab_note.visible = False
+            self._download_token = job.download_token
+            self._download_btn.visible = bool(job.download_token)
 
         elif job.state == JobState.FAILED:
             self._icon.props("name=error color=red")
@@ -68,3 +89,5 @@ class JobStatusCard:
                 job.error[:200] if job.error else "An unexpected error occurred."
             )
             self._progress_bar.visible = False
+            self._close_tab_note.visible = False
+            self._download_btn.visible = False

@@ -41,6 +41,10 @@ class SubmissionForm:
                 label="Email address",
                 placeholder="you@example.com",
             ).classes("w-full")
+            ui.label(
+                "We'll email you a download link when done. "
+                "You can also download directly from this page."
+            ).classes("text-xs text-gray-400 -mt-2")
 
             # Language selection
             with ui.row().classes("w-full gap-4"):
@@ -82,6 +86,15 @@ class SubmissionForm:
         self._file_label.classes(remove="text-gray-500", add="text-green-600")
         self._submit_btn.enable()
         ui.notify(f"Uploaded: {filename}", type="positive")
+
+    def reset(self):
+        """Clear form state for a new submission."""
+        self._uploaded_path = None
+        self._file_label.text = "No file selected"
+        self._file_label.classes(remove="text-green-600", add="text-gray-500")
+        self._email_input.value = ""
+        self._custom_instructions.value = ""
+        self._submit_btn.disable()
 
     async def _submit(self):
         import asyncio
