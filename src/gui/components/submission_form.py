@@ -25,17 +25,25 @@ class SubmissionForm:
         with ui.card().classes("w-full"):
             ui.label("새 번역").classes("text-lg font-bold")
 
-            # File upload
-            self._file_label = ui.label("파일을 선택해주세요").classes(
-                "text-sm text-gray-500"
-            )
-            upload = ui.upload(
+            # File selection status row
+            with ui.row().classes("items-center gap-1 w-full"):
+                self._file_label = ui.label("파일을 선택해주세요").classes(
+                    "text-sm text-gray-500 flex-1"
+                )
+                self._remove_btn = ui.button(
+                    icon="close", on_click=self._handle_file_removed
+                ).props("flat round dense color=grey size=xs")
+                self._remove_btn.visible = False
+
+            # Upload widget — built-in file list hidden to avoid confusing icons
+            self._upload = ui.upload(
                 label="EPUB 파일 선택...",
                 on_upload=self._handle_upload,
                 auto_upload=True,
                 max_files=1,
             ).props('accept=".epub" hide-upload-btn').classes("w-full")
-            upload.on("removed", self._handle_file_removed)
+            with self._upload.add_slot("list"):
+                pass  # empty slot hides Quasar's default file list
 
             # Email
             self._email_input = ui.input(
@@ -81,6 +89,8 @@ class SubmissionForm:
         self._file_label.text = "파일을 선택해주세요"
         self._file_label.classes(remove="text-green-600", add="text-gray-500")
         self._submit_btn.disable()
+        self._remove_btn.visible = False
+        self._upload.run_method("reset")
 
     async def _handle_upload(self, e: events.UploadEventArguments):
         filename = e.file.name
@@ -92,6 +102,7 @@ class SubmissionForm:
         self._file_label.text = f"✓ {filename}"
         self._file_label.classes(remove="text-gray-500", add="text-green-600")
         self._submit_btn.enable()
+        self._remove_btn.visible = True
         ui.notify(f"업로드 완료: {filename}", type="positive")
 
     def reset(self):
@@ -102,6 +113,8 @@ class SubmissionForm:
         self._email_input.value = ""
         self._custom_instructions.value = ""
         self._submit_btn.disable()
+        self._remove_btn.visible = False
+        self._upload.run_method("reset")
 
     async def _submit(self):
         import asyncio
