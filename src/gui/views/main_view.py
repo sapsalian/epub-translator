@@ -25,8 +25,8 @@ class MainView:
         with ui.column().classes("w-full max-w-2xl mx-auto p-4 gap-4"):
             # Header
             with ui.row().classes("w-full items-center justify-between"):
-                ui.label("EPUB Translator").classes("text-2xl font-bold")
-                ui.button("Sign Out", on_click=logout, icon="logout").props(
+                ui.label("EPUB 번역기").classes("text-2xl font-bold")
+                ui.button("로그아웃", on_click=logout, icon="logout").props(
                     "flat color=grey"
                 )
 
@@ -38,7 +38,7 @@ class MainView:
             with ui.column().classes("w-full gap-3") as self._status_area:
                 self._status_card = JobStatusCard()
                 self._new_translation_btn = ui.button(
-                    "New Translation", on_click=self._reset_to_form, icon="add"
+                    "새 번역 시작", on_click=self._reset_to_form, icon="add"
                 ).props("outline").classes("self-start")
                 self._new_translation_btn.visible = False
 
@@ -83,7 +83,7 @@ class MainView:
         app.storage.client["job_id"] = job_id
         self._show_status_view()
         self._start_polling()
-        ui.notify("Job submitted! We'll email you when it's done.", type="positive")
+        ui.notify("번역 요청이 접수되었습니다! 완료되면 이메일로 알려드리겠습니다.", type="positive")
 
     def _start_polling(self):
         async def poll():

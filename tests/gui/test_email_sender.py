@@ -53,14 +53,14 @@ class TestBuildCompletionMessage:
         url = "http://localhost/download/abc123"
         msg = self.sender._build_completion_message("u@e.com", "book.epub", url)
         payload = msg.get_payload()
-        plain_body = payload[0].get_payload()
+        plain_body = payload[0].get_payload(decode=True).decode("utf-8")
         assert url in plain_body
 
     def test_html_part_contains_link(self):
         url = "http://localhost/download/abc123"
         msg = self.sender._build_completion_message("u@e.com", "book.epub", url)
         payload = msg.get_payload()
-        html_body = payload[1].get_payload()
+        html_body = payload[1].get_payload(decode=True).decode("utf-8")
         assert url in html_body
 
 
@@ -74,7 +74,7 @@ class TestBuildFailureMessage:
 
     def test_body_contains_error(self):
         msg = self.sender._build_failure_message("u@e.com", "book.epub", "API error")
-        plain_body = msg.get_payload()[0].get_payload()
+        plain_body = msg.get_payload()[0].get_payload(decode=True).decode("utf-8")
         assert "API error" in plain_body
 
 

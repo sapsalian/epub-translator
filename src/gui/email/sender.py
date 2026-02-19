@@ -17,21 +17,21 @@ def _build_completion_message(
     download_url: str,
 ) -> MIMEMultipart:
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[EPUB Translator] Translation complete: {epub_filename}"
+    msg["Subject"] = f"[EPUB 번역기] 번역 완료: {epub_filename}"
     msg["From"] = server_config.SMTP_FROM
     msg["To"] = to_email
 
     plain = (
-        f"Your translation of '{epub_filename}' is ready.\n\n"
-        f"Download link (valid for {server_config.OUTPUT_RETENTION_HOURS} hours):\n"
+        f"'{epub_filename}' 번역이 완료되었습니다.\n\n"
+        f"다운로드 링크 ({server_config.OUTPUT_RETENTION_HOURS}시간 동안 유효):\n"
         f"{download_url}\n"
     )
     html = f"""\
 <html><body>
-<p>Your translation of <strong>{epub_filename}</strong> is ready.</p>
+<p><strong>{epub_filename}</strong> 번역이 완료되었습니다.</p>
 <p>
-  <a href="{download_url}">Download translated EPUB</a>
-  &nbsp;(link valid for {server_config.OUTPUT_RETENTION_HOURS} hours)
+  <a href="{download_url}">번역된 EPUB 다운로드</a>
+  &nbsp;(링크 유효 기간: {server_config.OUTPUT_RETENTION_HOURS}시간)
 </p>
 </body></html>"""
 
@@ -46,14 +46,14 @@ def _build_failure_message(
     error: str,
 ) -> MIMEMultipart:
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[EPUB Translator] Translation failed: {epub_filename}"
+    msg["Subject"] = f"[EPUB 번역기] 번역 실패: {epub_filename}"
     msg["From"] = server_config.SMTP_FROM
     msg["To"] = to_email
 
     plain = (
-        f"Translation of '{epub_filename}' failed.\n\n"
-        f"Error: {error}\n\n"
-        "Please try again or contact the administrator."
+        f"'{epub_filename}' 번역에 실패했습니다.\n\n"
+        f"오류: {error}\n\n"
+        "다시 시도하거나 관리자에게 문의해주세요."
     )
     msg.attach(MIMEText(plain, "plain"))
     return msg

@@ -4,6 +4,14 @@ from nicegui import ui
 
 from ..jobs.models import JobInfo, JobState
 
+_STAGE_LABELS: dict[str, str] = {
+    "extracting": "텍스트 추출",
+    "preprocessing": "전처리",
+    "translating": "번역",
+    "inserting": "결과 삽입",
+    "done": "완료",
+}
+
 
 class JobStatusCard:
     """Displays the status of the user's current translation job.
@@ -28,12 +36,12 @@ class JobStatusCard:
             self._progress_bar.visible = False
 
             self._close_tab_note = ui.label(
-                "You can safely close this tab — translation continues on the server."
+                "이 탭을 닫아도 괜찮습니다 — 번역은 서버에서 계속됩니다."
             ).classes("text-xs text-gray-400 mt-1")
             self._close_tab_note.visible = False
 
             self._download_btn = ui.button(
-                "Download EPUB", icon="download", on_click=self._handle_download
+                "EPUB 다운로드", icon="download", on_click=self._handle_download
             ).props("color=positive").classes("mt-1")
             self._download_btn.visible = False
 
@@ -53,9 +61,9 @@ class JobStatusCard:
 
         if job.state == JobState.QUEUED:
             self._icon.props("name=schedule color=blue")
-            self._title.text = "Waiting in queue"
+            self._title.text = "대기 중"
             self._detail.text = (
-                f"Position: #{queue_position}" if queue_position > 0 else "Waiting..."
+                f"{queue_position}번째 대기 중" if queue_position > 0 else "잠시만 기다려주세요..."
             )
             self._progress_bar.visible = False
             self._close_tab_note.visible = True
@@ -63,8 +71,8 @@ class JobStatusCard:
 
         elif job.state == JobState.RUNNING:
             self._icon.props("name=autorenew color=orange")
-            self._title.text = "Translating..."
-            stage_label = job.stage.replace("_", " ").title() if job.stage else ""
+            self._title.text = "번역 진행 중..."
+            stage_label = _STAGE_LABELS.get(job.stage, job.stage) if job.stage else ""
             pct = int(job.progress * 100)
             self._detail.text = f"{stage_label} — {pct}%"
             self._progress_bar.value = job.progress
@@ -74,8 +82,8 @@ class JobStatusCard:
 
         elif job.state == JobState.DONE:
             self._icon.props("name=check_circle color=green")
-            self._title.text = "Translation complete!"
-            self._detail.text = "Download link also sent to your email."
+            self._title.text = "번역 완료!"
+            self._detail.text = "이메일로도 다운로드 링크를 보내드렸습니다."
             self._progress_bar.value = 1.0
             self._progress_bar.visible = True
             self._close_tab_note.visible = False
@@ -84,9 +92,9 @@ class JobStatusCard:
 
         elif job.state == JobState.FAILED:
             self._icon.props("name=error color=red")
-            self._title.text = "Translation failed"
+            self._title.text = "번역 실패"
             self._detail.text = (
-                job.error[:200] if job.error else "An unexpected error occurred."
+                job.error[:200] if job.error else "예기치 않은 오류가 발생했습니다."
             )
             self._progress_bar.visible = False
             self._close_tab_note.visible = False

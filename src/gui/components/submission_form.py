@@ -23,14 +23,14 @@ class SubmissionForm:
 
     def _build(self):
         with ui.card().classes("w-full"):
-            ui.label("New Translation").classes("text-lg font-bold")
+            ui.label("새 번역").classes("text-lg font-bold")
 
             # File upload
-            self._file_label = ui.label("No file selected").classes(
+            self._file_label = ui.label("파일을 선택해주세요").classes(
                 "text-sm text-gray-500"
             )
             ui.upload(
-                label="Browse EPUB...",
+                label="EPUB 파일 선택...",
                 on_upload=self._handle_upload,
                 auto_upload=True,
                 max_files=1,
@@ -38,38 +38,38 @@ class SubmissionForm:
 
             # Email
             self._email_input = ui.input(
-                label="Email address",
-                placeholder="you@example.com",
+                label="이메일 주소",
+                placeholder="your@email.com",
             ).classes("w-full")
             ui.label(
-                "We'll email you a download link when done. "
-                "You can also download directly from this page."
+                "번역 완료 시 다운로드 링크를 이메일로 보내드립니다. "
+                "이 페이지에서 직접 다운로드할 수도 있습니다."
             ).classes("text-xs text-gray-400 -mt-2")
 
             # Language selection
             with ui.row().classes("w-full gap-4"):
                 self._src_lang = ui.select(
-                    label="Source Language",
+                    label="원문 언어",
                     options={lang: lang.value for lang in Language},
                     value=Language.ENGLISH,
                 ).classes("flex-1")
 
                 self._tgt_lang = ui.select(
-                    label="Target Language",
+                    label="번역 언어",
                     options={lang: lang.value for lang in Language},
                     value=Language.KOREAN,
                 ).classes("flex-1")
 
             # Custom instructions (collapsible)
-            with ui.expansion("Advanced settings", icon="tune").classes("w-full"):
+            with ui.expansion("고급 설정", icon="tune").classes("w-full"):
                 self._custom_instructions = ui.textarea(
-                    label="Custom Instructions (optional)",
-                    placeholder="Additional instructions for translation...",
+                    label="추가 지시사항 (선택)",
+                    placeholder="번역 시 특별히 요청할 내용을 입력하세요...",
                 ).classes("w-full")
 
             # Submit button
             self._submit_btn = ui.button(
-                "Submit Translation",
+                "번역 시작",
                 on_click=self._submit,
                 icon="translate",
             ).classes("w-full").props("size=lg color=primary")
@@ -85,12 +85,12 @@ class SubmissionForm:
         self._file_label.text = f"✓ {filename}"
         self._file_label.classes(remove="text-gray-500", add="text-green-600")
         self._submit_btn.enable()
-        ui.notify(f"Uploaded: {filename}", type="positive")
+        ui.notify(f"업로드 완료: {filename}", type="positive")
 
     def reset(self):
         """Clear form state for a new submission."""
         self._uploaded_path = None
-        self._file_label.text = "No file selected"
+        self._file_label.text = "파일을 선택해주세요"
         self._file_label.classes(remove="text-green-600", add="text-gray-500")
         self._email_input.value = ""
         self._custom_instructions.value = ""
@@ -100,12 +100,12 @@ class SubmissionForm:
         import asyncio
 
         if not self._uploaded_path:
-            ui.notify("Please upload an EPUB file", type="warning")
+            ui.notify("EPUB 파일을 업로드해주세요", type="warning")
             return
 
         email = self._email_input.value.strip()
         if not email or "@" not in email:
-            ui.notify("Please enter a valid email address", type="warning")
+            ui.notify("유효한 이메일 주소를 입력해주세요", type="warning")
             return
 
         self._submit_btn.disable()

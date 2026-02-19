@@ -8,17 +8,17 @@ from ..auth import check_credentials, login
 def build_login_page():
     """Render the login form. Redirects to / on success."""
     with ui.column().classes("absolute-center items-center gap-4 w-full max-w-sm"):
-        ui.label("EPUB Translator").classes("text-3xl font-bold")
-        ui.label("Sign in to continue").classes("text-gray-500")
+        ui.label("EPUB 번역기").classes("text-3xl font-bold")
+        ui.label("계속하려면 로그인하세요").classes("text-gray-500")
 
         with ui.card().classes("w-full"):
             username_input = ui.input(
-                label="Username",
+                label="아이디",
                 placeholder="admin",
             ).classes("w-full")
 
             password_input = ui.input(
-                label="Password",
+                label="비밀번호",
                 password=True,
                 password_toggle_button=True,
             ).classes("w-full")
@@ -34,11 +34,11 @@ def build_login_page():
                     login(username)
                     ui.navigate.to("/")
                 else:
-                    error_label.text = "Invalid username or password."
+                    error_label.text = "아이디 또는 비밀번호가 올바르지 않습니다."
                     error_label.visible = True
                     password_input.value = ""
 
-            ui.button("Sign In", on_click=attempt_login, icon="login").classes(
+            ui.button("로그인", on_click=attempt_login, icon="login").classes(
                 "w-full"
             ).props("color=primary size=lg")
 
