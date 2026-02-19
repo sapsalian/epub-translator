@@ -1,7 +1,13 @@
-"""Server configuration loaded from environment variables."""
+"""Server configuration loaded from environment variables (with .env support)."""
 
 import os
 from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # loads .env from cwd (or parent dirs) if present
+except ImportError:
+    pass  # dotenv not installed, env vars must be set manually
 
 
 def _require(key: str) -> str:
