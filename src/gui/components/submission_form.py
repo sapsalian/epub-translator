@@ -29,12 +29,13 @@ class SubmissionForm:
             self._file_label = ui.label("파일을 선택해주세요").classes(
                 "text-sm text-gray-500"
             )
-            ui.upload(
+            upload = ui.upload(
                 label="EPUB 파일 선택...",
                 on_upload=self._handle_upload,
                 auto_upload=True,
                 max_files=1,
-            ).props('accept=".epub"').classes("w-full")
+            ).props('accept=".epub" hide-upload-btn').classes("w-full")
+            upload.on("removed", self._handle_file_removed)
 
             # Email
             self._email_input = ui.input(
@@ -74,6 +75,12 @@ class SubmissionForm:
                 icon="translate",
             ).classes("w-full").props("size=lg color=primary")
             self._submit_btn.disable()
+
+    def _handle_file_removed(self, _e=None):
+        self._uploaded_path = None
+        self._file_label.text = "파일을 선택해주세요"
+        self._file_label.classes(remove="text-green-600", add="text-gray-500")
+        self._submit_btn.disable()
 
     async def _handle_upload(self, e: events.UploadEventArguments):
         filename = e.file.name
