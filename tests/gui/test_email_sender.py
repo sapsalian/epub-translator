@@ -2,25 +2,33 @@
 
 import importlib
 import os
-from email.mime.multipart import MIMEMultipart
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 
-def _reload_sender():
-    import src.gui.server_config as cfg
-    importlib.reload(cfg)
-    import src.gui.email.sender as sender
-    importlib.reload(sender)
+def _reload_sender(smtp_host: str = ""):
+    """Reload server_config + sender with a clean env and mocked load_dotenv."""
+    smtp_env = {"SMTP_HOST": smtp_host} if smtp_host else {}
+    # Clear SMTP-related env vars first
+    for k in ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",
+               "AUTH_PASSWORD", "OUTPUT_RETENTION_HOURS", "BASE_URL"):
+        os.environ.pop(k, None)
+    os.environ.update(smtp_env)
+    os.environ.setdefault("SMTP_FROM", "test@example.com")
+    os.environ.setdefault("OUTPUT_RETENTION_HOURS", "24")
+    os.environ.setdefault("BASE_URL", "http://localhost:8080")
+
+    with patch("dotenv.load_dotenv"):
+        import src.gui.server_config as cfg
+        importlib.reload(cfg)
+        import src.gui.email.sender as sender
+        importlib.reload(sender)
     return sender
 
 
 class TestBuildCompletionMessage:
     def setup_method(self):
-        os.environ["SMTP_FROM"] = "test@example.com"
-        os.environ["OUTPUT_RETENTION_HOURS"] = "24"
-        os.environ["BASE_URL"] = "http://localhost:8080"
         self.sender = _reload_sender()
 
     def test_subject_contains_filename(self):
@@ -58,7 +66,6 @@ class TestBuildCompletionMessage:
 
 class TestBuildFailureMessage:
     def setup_method(self):
-        os.environ["SMTP_FROM"] = "test@example.com"
         self.sender = _reload_sender()
 
     def test_subject_contains_filename(self):
@@ -74,43 +81,35 @@ class TestBuildFailureMessage:
 @pytest.mark.asyncio
 class TestSendCompletionEmail:
     async def test_no_smtp_logs_instead_of_sending(self, caplog):
-        os.environ.pop("SMTP_HOST", None)
-        sender = _reload_sender()
+        sender = _reload_sender(smtp_host="")  # no SMTP_HOST
         with caplog.at_level("INFO"):
             await sender.send_completion_email("u@e.com", "book.epub", "token123")
         assert "SMTP not configured" in caplog.text
 
     async def test_smtp_configured_calls_send_sync(self):
-        os.environ["SMTP_HOST"] = "smtp.example.com"
-        sender = _reload_sender()
+        sender = _reload_sender(smtp_host="smtp.example.com")
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             await sender.send_completion_email("u@e.com", "book.epub", "tok")
             mock_thread.assert_called_once()
-        os.environ.pop("SMTP_HOST", None)
 
     async def test_smtp_failure_is_caught_and_logged(self, caplog):
-        os.environ["SMTP_HOST"] = "smtp.example.com"
-        sender = _reload_sender()
+        sender = _reload_sender(smtp_host="smtp.example.com")
         with patch("asyncio.to_thread", side_effect=Exception("connect refused")):
             with caplog.at_level("ERROR"):
                 await sender.send_completion_email("u@e.com", "book.epub", "tok")
         assert "Failed to send" in caplog.text
-        os.environ.pop("SMTP_HOST", None)
 
 
 @pytest.mark.asyncio
 class TestSendFailureEmail:
     async def test_no_smtp_logs_instead_of_sending(self, caplog):
-        os.environ.pop("SMTP_HOST", None)
-        sender = _reload_sender()
+        sender = _reload_sender(smtp_host="")  # no SMTP_HOST
         with caplog.at_level("WARNING"):
             await sender.send_failure_email("u@e.com", "book.epub", "some error")
         assert "SMTP not configured" in caplog.text
 
     async def test_smtp_configured_calls_send_sync(self):
-        os.environ["SMTP_HOST"] = "smtp.example.com"
-        sender = _reload_sender()
+        sender = _reload_sender(smtp_host="smtp.example.com")
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             await sender.send_failure_email("u@e.com", "book.epub", "err")
             mock_thread.assert_called_once()
-        os.environ.pop("SMTP_HOST", None)

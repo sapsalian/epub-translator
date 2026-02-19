@@ -3,6 +3,7 @@
 import os
 import importlib
 from pathlib import Path
+from unittest.mock import patch
 
 
 _CONFIG_KEYS = [
@@ -13,12 +14,17 @@ _CONFIG_KEYS = [
 
 
 def _reload_config(env: dict):
-    """Reload server_config with a clean environment (all config keys cleared first)."""
+    """Reload server_config with a clean environment.
+
+    Clears all config-related env vars, mocks load_dotenv to prevent .env
+    from overriding the test environment, then applies the given env dict.
+    """
     saved = {k: os.environ.pop(k, None) for k in _CONFIG_KEYS}
     os.environ.update(env)
     try:
-        import src.gui.server_config as cfg
-        importlib.reload(cfg)
+        with patch("dotenv.load_dotenv"):  # prevent .env from interfering
+            import src.gui.server_config as cfg
+            importlib.reload(cfg)
         return cfg
     finally:
         for k in _CONFIG_KEYS:

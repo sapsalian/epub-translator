@@ -83,7 +83,9 @@ class SubmissionForm:
         self._submit_btn.enable()
         ui.notify(f"Uploaded: {filename}", type="positive")
 
-    def _submit(self):
+    async def _submit(self):
+        import asyncio
+
         if not self._uploaded_path:
             ui.notify("Please upload an EPUB file", type="warning")
             return
@@ -94,7 +96,7 @@ class SubmissionForm:
             return
 
         self._submit_btn.disable()
-        self._on_submit(
+        result = self._on_submit(
             {
                 "epub_path": self._uploaded_path,
                 "epub_filename": self._uploaded_path.name,
@@ -104,3 +106,5 @@ class SubmissionForm:
                 "custom_instructions": self._custom_instructions.value or "",
             }
         )
+        if asyncio.iscoroutine(result):
+            await result

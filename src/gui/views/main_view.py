@@ -42,7 +42,7 @@ class MainView:
             self._job_id = stored_job_id
             self._start_polling()
 
-    def _handle_submit(self, params: dict):
+    async def _handle_submit(self, params: dict):
         job_id = uuid.uuid4().hex
         job = JobInfo(
             job_id=job_id,
@@ -53,17 +53,11 @@ class MainView:
             target_language=params["target_language"],
             custom_instructions=params["custom_instructions"],
         )
-
-        async def submit():
-            await job_manager.submit(job)
-            self._job_id = job_id
-            app.storage.client["job_id"] = job_id
-            self._start_polling()
-            ui.notify("Job submitted! We'll email you when it's done.", type="positive")
-
-        ui.run_javascript("0")  # Ensure we're in a valid UI context
-        import asyncio
-        asyncio.ensure_future(submit())
+        await job_manager.submit(job)
+        self._job_id = job_id
+        app.storage.client["job_id"] = job_id
+        self._start_polling()
+        ui.notify("Job submitted! We'll email you when it's done.", type="positive")
 
     def _start_polling(self):
         async def poll():
