@@ -32,11 +32,13 @@ class JobStatusCard:
                 self._title = ui.label("").classes("text-lg font-bold")
 
             self._detail = ui.label("").classes("text-sm text-gray-500")
-            self._progress_bar = ui.linear_progress(value=0.0).classes("w-full mt-2")
+            self._progress_bar = ui.linear_progress(
+                value=0.0, show_value=False
+            ).classes("w-full mt-2")
             self._progress_bar.visible = False
 
             self._close_tab_note = ui.label(
-                "이 탭을 닫아도 괜찮습니다 — 번역은 서버에서 계속됩니다."
+                "이 탭을 닫아도, 번역은 서버에서 계속됩니다. 번역이 완료되면 이메일로 다운로드 링크를 보내드립니다."
             ).classes("text-xs text-gray-400 mt-1")
             self._close_tab_note.visible = False
 
