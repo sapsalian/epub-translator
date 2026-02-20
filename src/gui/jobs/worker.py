@@ -54,7 +54,7 @@ async def run_worker(manager: JobManager) -> None:
         orchestrator: PipelineOrchestrator | None = None
 
         try:
-            config = PipelineConfig(
+            config = PipelineConfig.from_env(
                 source_language=job.source_language,
                 target_language=job.target_language,
                 custom_instructions=job.custom_instructions,

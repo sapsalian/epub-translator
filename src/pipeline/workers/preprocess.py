@@ -7,12 +7,13 @@ This prepares context for the translation phase.
 Input: PreprocessInput (extraction_result, target_language)
 Output: PreprocessResult
 
-Processing order:
-1. XHTMLs are processed one at a time (sequential)
-2. Within each XHTML, chunks are processed in parallel (semaphore-limited)
-3. Chunk results are merged per-XHTML (summary + terms)
-4. XHTML term results are merged into final EPUB term dictionary
-5. Summaries are kept per-XHTML for translation context
+Processing order (fully parallel, semaphore-limited):
+1. All XHTMLs are processed in parallel
+2. Within each XHTML, all chunks are processed in parallel
+3. A single shared semaphore (max_concurrent) limits total concurrent API calls
+4. Chunk results are merged per-XHTML (summary + terms)
+5. XHTML term results are merged into final EPUB term dictionary
+6. Summaries are kept per-XHTML for translation context
 """
 
 import asyncio
@@ -226,12 +227,11 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     epub_summary="",
                 )
 
-            # Process XHTMLs sequentially; chunks within each XHTML in parallel
+            # Process all XHTMLs in parallel; semaphore limits total concurrent API calls
             semaphore = asyncio.Semaphore(max_concurrent)
             total_xhtmls = len(xhtmls_with_content)
-            xhtml_results = []
-            for i, xhtml in enumerate(xhtmls_with_content, 1):
-                result = await self._process_xhtml(
+            xhtml_results = await asyncio.gather(*[
+                self._process_xhtml(
                     xhtml=xhtml,
                     source_language=extraction.source_language,
                     target_language=target_language,
@@ -241,7 +241,8 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     index=i,
                     total=total_xhtmls,
                 )
-                xhtml_results.append(result)
+                for i, xhtml in enumerate(xhtmls_with_content, 1)
+            ])
 
             # Collect results
             all_summaries: dict[str, str] = {}
