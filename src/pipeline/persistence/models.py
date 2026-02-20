@@ -50,10 +50,10 @@ class StageProgress(BaseModel):
 STAGE_WEIGHTS: dict[JobStage, tuple[float, float]] = {
     # (base_progress, weight)
     JobStage.PENDING: (0.0, 0.0),
-    JobStage.EXTRACTING: (0.0, 0.10),  # 10%
-    JobStage.PREPROCESSING: (0.10, 0.15),  # 15%
-    JobStage.TRANSLATING: (0.25, 0.70),  # 70%
-    JobStage.INSERTING: (0.95, 0.05),  # 5%
+    JobStage.EXTRACTING: (0.0, 0.05),    # 0–5%
+    JobStage.PREPROCESSING: (0.05, 0.25), # 5–30%
+    JobStage.TRANSLATING: (0.30, 0.65),   # 30–95%
+    JobStage.INSERTING: (0.95, 0.05),     # 95–100%
     JobStage.COMPLETED: (1.0, 0.0),
     JobStage.FAILED: (0.0, 0.0),
 }
@@ -107,10 +107,10 @@ class JobStatus(BaseModel):
         Overall progress as a value from 0.0 to 1.0.
 
         Calculated using stage weights:
-        - Extraction: 10%
-        - Preprocessing: 15%
-        - Translation: 70%
-        - Insertion: 5%
+        - Extraction:    0–5%
+        - Preprocessing: 5–30%
+        - Translation:   30–95%
+        - Insertion:     95–100%
         """
         if self.stage in (JobStage.PENDING, JobStage.FAILED):
             return 0.0

@@ -18,6 +18,7 @@ Processing order (fully parallel, semaphore-limited):
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -145,6 +146,11 @@ class PreprocessInput(BaseModel):
         default=DEFAULT_MAX_CONCURRENT,
         description="Maximum concurrent API calls",
     )
+    on_xhtml_complete: Callable[[], Awaitable[None]] | None = Field(
+        default=None,
+        description="Called after each XHTML finishes processing (for progress tracking)",
+        exclude=True,
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -229,9 +235,11 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
 
             # Process all XHTMLs in parallel; semaphore limits total concurrent API calls
             semaphore = asyncio.Semaphore(max_concurrent)
+            on_xhtml_complete = input_data.on_xhtml_complete
             total_xhtmls = len(xhtmls_with_content)
-            xhtml_results = await asyncio.gather(*[
-                self._process_xhtml(
+
+            async def _process_and_notify(xhtml, i):
+                result = await self._process_xhtml(
                     xhtml=xhtml,
                     source_language=extraction.source_language,
                     target_language=target_language,
@@ -241,6 +249,12 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     index=i,
                     total=total_xhtmls,
                 )
+                if on_xhtml_complete is not None:
+                    await on_xhtml_complete()
+                return result
+
+            xhtml_results = await asyncio.gather(*[
+                _process_and_notify(xhtml, i)
                 for i, xhtml in enumerate(xhtmls_with_content, 1)
             ])
 
