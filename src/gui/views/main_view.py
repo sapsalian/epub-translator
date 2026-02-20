@@ -42,8 +42,8 @@ class MainView:
                 ).props("outline").classes("self-start")
                 self._new_translation_btn.visible = False
 
-        # Restore job from client storage (page reload resilience)
-        stored_job_id = app.storage.client.get("job_id")
+        # Restore job from user storage (page reload resilience)
+        stored_job_id = app.storage.user.get("job_id")
         if stored_job_id and job_manager.get_status(stored_job_id):
             self._job_id = stored_job_id
             self._show_status_view()
@@ -60,7 +60,7 @@ class MainView:
         self._status_area.set_visibility(True)
 
     def _reset_to_form(self):
-        app.storage.client.pop("job_id", None)
+        app.storage.user.pop("job_id", None)
         self._job_id = None
         self._stop_polling()
         self._form.reset()
@@ -80,7 +80,7 @@ class MainView:
         )
         await job_manager.submit(job)
         self._job_id = job_id
-        app.storage.client["job_id"] = job_id
+        app.storage.user["job_id"] = job_id
         self._show_status_view()
         self._start_polling()
         ui.notify("번역 요청이 접수되었습니다! 완료되면 이메일로 알려드리겠습니다.", type="positive")
