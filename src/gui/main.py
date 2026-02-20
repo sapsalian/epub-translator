@@ -1,8 +1,9 @@
 """Web server entrypoint for the EPUB Translator (server branch)."""
 
 import asyncio
-import shutil
 import logging
+import shutil
+import sys
 from datetime import datetime, timedelta
 
 from nicegui import app, ui
@@ -14,6 +15,12 @@ from .views.login_view import build_login_page
 from .views.main_view import MainView
 
 from .routes import register_routes
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stderr,
+)
 
 logger = logging.getLogger(__name__)
 
