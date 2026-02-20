@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import shutil
 from pathlib import Path
 
 from src.pipeline import PipelineConfig, PipelineOrchestrator
@@ -79,6 +80,9 @@ async def run_worker(manager: JobManager) -> None:
             logger.info("Job %s completed: %s", job_id, result.output_path)
             await send_completion_email(job.email, job.epub_filename, token)
 
+            shutil.rmtree(job_checkpoint_dir, ignore_errors=True)
+            logger.info("Cleared checkpoint dir for job %s", job_id)
+
         except Exception as exc:
             job.state = JobState.FAILED
             job.error = str(exc)
@@ -93,9 +97,8 @@ async def run_worker(manager: JobManager) -> None:
                 except asyncio.CancelledError:
                     pass
 
-            # Delete uploaded EPUB regardless of outcome
-            if epub_path.exists():
-                epub_path.unlink(missing_ok=True)
+            # Delete uploaded EPUB directory (uuid subdir + file) regardless of outcome
+            shutil.rmtree(epub_path.parent, ignore_errors=True)
 
             manager.queue.task_done()
             logger.info("Job %s finished (state=%s)", job_id, job.state if job else "?")
