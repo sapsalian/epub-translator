@@ -7,14 +7,15 @@ This prepares context for the translation phase.
 Input: PreprocessInput (extraction_result, target_language)
 Output: PreprocessResult
 
-Processing order (sequential):
-1. XHTMLs are processed one at a time
-2. Within each XHTML, chunks are processed one at a time
+Processing order:
+1. XHTMLs are processed one at a time (sequential)
+2. Within each XHTML, chunks are processed in parallel (semaphore-limited)
 3. Chunk results are merged per-XHTML (summary + terms)
 4. XHTML term results are merged into final EPUB term dictionary
 5. Summaries are kept per-XHTML for translation context
 """
 
+import asyncio
 import logging
 from typing import Protocol
 
@@ -196,11 +197,14 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         custom_instructions = input_data.custom_instructions
         chunk_size = input_data.chunk_size
 
+        max_concurrent = input_data.max_concurrent
+
         self.logger.info(
-            "Starting preprocessing for EPUB: %s (target: %s, chunk_size: %d, sequential)",
+            "Starting preprocessing for EPUB: %s (target: %s, chunk_size: %d, max_concurrent=%d)",
             extraction.epub_id,
             target_language.value,
             chunk_size,
+            max_concurrent,
         )
 
         try:
@@ -222,7 +226,8 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     epub_summary="",
                 )
 
-            # Process XHTMLs sequentially
+            # Process XHTMLs sequentially; chunks within each XHTML in parallel
+            semaphore = asyncio.Semaphore(max_concurrent)
             total_xhtmls = len(xhtmls_with_content)
             xhtml_results = []
             for i, xhtml in enumerate(xhtmls_with_content, 1):
@@ -231,6 +236,7 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     source_language=extraction.source_language,
                     target_language=target_language,
                     chunk_size=chunk_size,
+                    semaphore=semaphore,
                     custom_instructions=custom_instructions,
                     index=i,
                     total=total_xhtmls,
@@ -317,20 +323,22 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         source_language: Language,
         target_language: Language,
         chunk_size: int,
+        semaphore: asyncio.Semaphore,
         custom_instructions: str,
         index: int,
         total: int,
     ) -> tuple[str, TermDict, str]:
         """
-        Process a single XHTML file with sequential chunk processing.
+        Process a single XHTML file with parallel chunk processing.
 
-        Chunks are processed one at a time, then results are merged.
+        Chunks are dispatched in parallel (semaphore-limited), then results are merged.
 
         Args:
             xhtml: XHTML extraction data.
             source_language: Source language.
             target_language: Target language.
             chunk_size: Maximum chunk size.
+            semaphore: Shared semaphore limiting concurrent API calls.
             custom_instructions: Custom style instructions.
             index: 1-based XHTML index for logging.
             total: Total XHTML count for logging.
@@ -350,17 +358,17 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         if not chunks:
             return "", {}, ""
 
-        # Process chunks sequentially
-        chunk_results = []
-        for chunk in chunks:
-            result = await self._api_client.extract_chunk(
-                chunk_text=chunk,
-                source_language=source_language,
-                target_language=target_language,
-                existing_terms=None,
-                custom_instructions=custom_instructions,
-            )
-            chunk_results.append(result)
+        async def _extract(chunk: str) -> ChunkResult:
+            async with semaphore:
+                return await self._api_client.extract_chunk(
+                    chunk_text=chunk,
+                    source_language=source_language,
+                    target_language=target_language,
+                    existing_terms=None,
+                    custom_instructions=custom_instructions,
+                )
+
+        chunk_results = await asyncio.gather(*(_extract(c) for c in chunks))
 
         # Collect chunk results
         chunk_summaries: list[str] = []
