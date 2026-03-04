@@ -1,0 +1,58 @@
+import axios, { AxiosError } from 'axios'
+
+const api = axios.create({ baseURL: '/' })
+
+export function extractErrorMessage(error: unknown): string {
+  if (error instanceof AxiosError) {
+    const detail = error.response?.data?.detail
+    if (typeof detail === 'string') return detail
+    if (error.response?.status) return `Request failed (${error.response.status})`
+  }
+  if (error instanceof Error) return error.message
+  return 'An unexpected error occurred'
+}
+
+export interface Settings {
+  model: string
+  source_language: string
+  target_language: string
+  api_key_set: boolean
+}
+
+export interface JobInfo {
+  job_id: string
+  filename: string
+  state: 'queued' | 'processing' | 'done' | 'failed'
+  progress: number
+  stage: string
+  created_at: string
+  download_token: string | null
+  queue_position?: number | null
+  error?: string | null
+}
+
+export interface LanguageOption {
+  code: string
+  label: string
+}
+
+export const apiClient = {
+  getSettings: () => api.get<Settings>('/api/settings').then(r => r.data),
+  updateSettings: (data: Partial<Settings> & { openai_api_key?: string }) =>
+    api.put<Settings>('/api/settings', data).then(r => r.data),
+
+  getLanguages: () => api.get<{ languages: LanguageOption[] }>('/api/languages').then(r => r.data.languages),
+
+  uploadFile: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<{ upload_id: string; filename: string }>('/api/upload', form).then(r => r.data)
+  },
+
+  createJob: (data: { upload_id: string; source_language: string; target_language: string; custom_instructions?: string }) =>
+    api.post<{ job_id: string }>('/api/jobs', data).then(r => r.data),
+
+  listJobs: () => api.get<JobInfo[]>('/api/jobs').then(r => r.data),
+  getJob: (jobId: string) => api.get<JobInfo>(`/api/jobs/${jobId}`).then(r => r.data),
+  deleteJob: (jobId: string) => api.delete<{ ok: boolean }>(`/api/jobs/${jobId}`).then(r => r.data),
+}
