@@ -259,8 +259,8 @@ class TestTranslate:
         mock_openai.return_value.responses.create = AsyncMock(
             return_value=_mock_create_response({
                 "translations": [
-                    {"unit_id": "unit-001", "text": "안녕 {{1}}세상{{/1}}"},
-                    {"unit_id": "unit-002", "text": "안녕히 가세요"},
+                    {"unit_id": "u1", "text": "안녕 {{1}}세상{{/1}}"},
+                    {"unit_id": "u2", "text": "안녕히 가세요"},
                 ],
             })
         )
@@ -284,8 +284,8 @@ class TestTranslate:
         mock_openai.return_value.responses.create = AsyncMock(
             return_value=_mock_create_response({
                 "translations": [
-                    {"unit_id": "unit-001", "text": "번역된 텍스트"},
-                    # unit-002 is missing
+                    {"unit_id": "u1", "text": "번역된 텍스트"},
+                    # u2 is missing
                 ],
             })
         )
@@ -408,8 +408,8 @@ class TestStyleNotes:
         mock_create = AsyncMock(
             return_value=_mock_create_response({
                 "translations": [
-                    {"unit_id": "unit-001", "text": "번역1"},
-                    {"unit_id": "unit-002", "text": "번역2"},
+                    {"unit_id": "u1", "text": "번역1"},
+                    {"unit_id": "u2", "text": "번역2"},
                 ],
             })
         )
