@@ -7,16 +7,18 @@ This prepares context for the translation phase.
 Input: PreprocessInput (extraction_result, target_language)
 Output: PreprocessResult
 
-This is an IO-bound worker that uses parallel processing:
+Processing order (fully parallel, semaphore-limited):
 1. All XHTMLs are processed in parallel
 2. Within each XHTML, all chunks are processed in parallel
-3. Chunk results are merged per-XHTML (summary + terms)
-4. XHTML term results are merged into final EPUB term dictionary
-5. Summaries are kept per-XHTML for translation context
+3. A single shared semaphore (max_concurrent) limits total concurrent API calls
+4. Chunk results are merged per-XHTML (summary + terms)
+5. XHTML term results are merged into final EPUB term dictionary
+6. Summaries are kept per-XHTML for translation context
 """
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -144,6 +146,11 @@ class PreprocessInput(BaseModel):
         default=DEFAULT_MAX_CONCURRENT,
         description="Maximum concurrent API calls",
     )
+    on_xhtml_complete: Callable[[], Awaitable[None]] | None = Field(
+        default=None,
+        description="Called after each XHTML finishes processing (for progress tracking)",
+        exclude=True,
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -196,18 +203,16 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         target_language = input_data.target_language
         custom_instructions = input_data.custom_instructions
         chunk_size = input_data.chunk_size
+
         max_concurrent = input_data.max_concurrent
 
         self.logger.info(
-            "Starting preprocessing for EPUB: %s (target: %s, chunk_size: %d, max_concurrent: %d)",
+            "Starting preprocessing for EPUB: %s (target: %s, chunk_size: %d, max_concurrent=%d)",
             extraction.epub_id,
             target_language.value,
             chunk_size,
             max_concurrent,
         )
-
-        # Create semaphore for API call concurrency control
-        semaphore = asyncio.Semaphore(max_concurrent)
 
         try:
             # Filter XHTMLs with content
@@ -228,10 +233,13 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     epub_summary="",
                 )
 
-            # Process all XHTMLs in parallel (with semaphore for API rate limiting)
+            # Process all XHTMLs in parallel; semaphore limits total concurrent API calls
+            semaphore = asyncio.Semaphore(max_concurrent)
+            on_xhtml_complete = input_data.on_xhtml_complete
             total_xhtmls = len(xhtmls_with_content)
-            xhtml_tasks = [
-                self._process_xhtml(
+
+            async def _process_and_notify(xhtml, i):
+                result = await self._process_xhtml(
                     xhtml=xhtml,
                     source_language=extraction.source_language,
                     target_language=target_language,
@@ -241,9 +249,14 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
                     index=i,
                     total=total_xhtmls,
                 )
+                if on_xhtml_complete is not None:
+                    await on_xhtml_complete()
+                return result
+
+            xhtml_results = await asyncio.gather(*[
+                _process_and_notify(xhtml, i)
                 for i, xhtml in enumerate(xhtmls_with_content, 1)
-            ]
-            xhtml_results = await asyncio.gather(*xhtml_tasks)
+            ])
 
             # Collect results
             all_summaries: dict[str, str] = {}
@@ -333,14 +346,17 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         """
         Process a single XHTML file with parallel chunk processing.
 
-        All chunks are processed in parallel (with semaphore), then results are merged.
+        Chunks are dispatched in parallel (semaphore-limited), then results are merged.
 
         Args:
             xhtml: XHTML extraction data.
             source_language: Source language.
             target_language: Target language.
             chunk_size: Maximum chunk size.
-            semaphore: Semaphore for API call concurrency control.
+            semaphore: Shared semaphore limiting concurrent API calls.
+            custom_instructions: Custom style instructions.
+            index: 1-based XHTML index for logging.
+            total: Total XHTML count for logging.
 
         Returns:
             Tuple of (summary, terms_dict, style_notes).
@@ -357,18 +373,17 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         if not chunks:
             return "", {}, ""
 
-        # Process all chunks in parallel with semaphore for rate limiting
-        chunk_tasks = [
-            self._extract_chunk_with_semaphore(
-                chunk_text=chunk,
-                source_language=source_language,
-                target_language=target_language,
-                semaphore=semaphore,
-                custom_instructions=custom_instructions,
-            )
-            for chunk in chunks
-        ]
-        chunk_results = await asyncio.gather(*chunk_tasks)
+        async def _extract(chunk: str) -> ChunkResult:
+            async with semaphore:
+                return await self._api_client.extract_chunk(
+                    chunk_text=chunk,
+                    source_language=source_language,
+                    target_language=target_language,
+                    existing_terms=None,
+                    custom_instructions=custom_instructions,
+                )
+
+        chunk_results = await asyncio.gather(*(_extract(c) for c in chunks))
 
         # Collect chunk results
         chunk_summaries: list[str] = []
@@ -400,35 +415,6 @@ class PreprocessWorker(AsyncWorker[PreprocessInput, PreprocessResult]):
         style_notes = chunk_styles[0] if chunk_styles else ""
 
         return summary, terms, style_notes
-
-    async def _extract_chunk_with_semaphore(
-        self,
-        chunk_text: str,
-        source_language: Language,
-        target_language: Language,
-        semaphore: asyncio.Semaphore,
-        custom_instructions: str,
-    ) -> ChunkResult:
-        """
-        Extract chunk with semaphore for rate limiting.
-
-        Args:
-            chunk_text: Text chunk to analyze.
-            source_language: Source language.
-            target_language: Target language.
-            semaphore: Semaphore for concurrency control.
-
-        Returns:
-            ChunkResult with summary and terms.
-        """
-        async with semaphore:
-            return await self._api_client.extract_chunk(
-                chunk_text=chunk_text,
-                source_language=source_language,
-                target_language=target_language,
-                existing_terms=None,
-                custom_instructions=custom_instructions,
-            )
 
     def _split_into_chunks(self, text: str, chunk_size: int) -> list[str]:
         """

@@ -68,8 +68,8 @@ class TestJobStatus:
             stage=JobStage.EXTRACTING,
             extracting=StageProgress(total=10, completed=5),
         )
-        # base=0, weight=0.10, progress=0.5
-        expected = 0.0 + (0.5 * 0.10)
+        # base=0, weight=0.05, progress=0.5
+        expected = 0.0 + (0.5 * 0.05)
         assert status.overall_progress == pytest.approx(expected)
 
     def test_overall_progress_translating(self):
@@ -80,8 +80,8 @@ class TestJobStatus:
             stage=JobStage.TRANSLATING,
             translating=StageProgress(total=10, completed=5),
         )
-        # base=0.25, weight=0.70, progress=0.5
-        expected = 0.25 + (0.5 * 0.70)
+        # base=0.30, weight=0.65, progress=0.5
+        expected = 0.30 + (0.5 * 0.65)
         assert status.overall_progress == pytest.approx(expected)
 
     def test_overall_progress_completed(self):

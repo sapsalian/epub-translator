@@ -75,7 +75,8 @@ class TestPipelineConfigFromEnv:
 
     def test_from_env_with_no_env_vars(self):
         """from_env works without any env vars set."""
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=True), \
+             patch("src.pipeline.config._load_env_file"):
             config = PipelineConfig.from_env(
                 source_language=Language.ENGLISH,
                 target_language=Language.KOREAN,

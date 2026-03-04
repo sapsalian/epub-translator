@@ -257,9 +257,21 @@ class PipelineOrchestrator:
         """Run preprocessing stage."""
         logger.info("Running preprocessing for %s", epub_id)
 
-        await self._checkpoint_manager.update_job_stage(
-            epub_id, self._config.target_language, JobStage.PREPROCESSING
+        total_xhtmls = max(
+            sum(1 for x in extraction_result.xhtml_extractions if x.raw_text.strip()),
+            1,
         )
+        await self._checkpoint_manager.update_job_stage(
+            epub_id, self._config.target_language, JobStage.PREPROCESSING,
+            total=total_xhtmls,
+        )
+
+        lang = self._config.target_language
+
+        async def _on_xhtml_complete() -> None:
+            await self._checkpoint_manager.increment_job_progress(
+                epub_id, lang, JobStage.PREPROCESSING
+            )
 
         worker = PreprocessWorker(self._api_client)
         preprocess_input = PreprocessInput(
@@ -268,6 +280,7 @@ class PipelineOrchestrator:
             custom_instructions=self._config.custom_instructions,
             chunk_size=self._config.chunk_size,
             max_concurrent=self._config.preprocess_max_concurrent,
+            on_xhtml_complete=_on_xhtml_complete,
         )
 
         result = await worker.process(preprocess_input)

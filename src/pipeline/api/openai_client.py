@@ -228,7 +228,11 @@ class OpenAIClient:
         if not text_units:
             return []
 
-        unit_ids = [unit.unit_id for unit in text_units]
+        # Use short sequential indices (u1, u2, ...) instead of hex hashes when
+        # talking to the LLM. Complex hex IDs cause frequent copy errors in LLM
+        # responses; simple short indices are reproduced reliably.
+        index_ids = [f"u{i}" for i in range(1, len(text_units) + 1)]
+        index_to_unit_id = {idx: unit.unit_id for idx, unit in zip(index_ids, text_units)}
         texts = [unit.tagged_text for unit in text_units]
         total_chars = sum(len(text) for text in texts)
 
@@ -242,7 +246,7 @@ class OpenAIClient:
         )
 
         input_text = build_translation_input(
-            unit_ids=unit_ids,
+            unit_ids=index_ids,
             texts=texts,
             source_language=source_language,
             target_language=target_language,
@@ -259,17 +263,17 @@ class OpenAIClient:
             cache_key=cache_key,
         )
 
-        translations_map = {
+        # Map sequential indices back to original unit_ids
+        index_translations_map = {
             e["unit_id"]: e["text"] for e in result.get("translations", [])
         }
         translations = []
         missing_ids = []
-        for unit_id in unit_ids:
-            if unit_id in translations_map:
-                translations.append(translations_map[unit_id])
-            else:
-                translations.append("")
-                missing_ids.append(unit_id)
+        for idx, unit in zip(index_ids, text_units):
+            translation = index_translations_map.get(idx, "")
+            translations.append(translation)
+            if not translation:
+                missing_ids.append(unit.unit_id)
 
         if missing_ids:
             logger.warning("Missing translations for unit IDs: %s", missing_ids)
