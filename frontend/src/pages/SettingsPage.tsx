@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { apiClient, extractErrorMessage, type LanguageOption, type Settings } from '../api/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -70,10 +69,7 @@ export function SettingsPage() {
 
   return (
     <div className="max-w-lg mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Link to="/" className="text-primary hover:underline text-sm">&larr; Back</Link>
-        <h1 className="text-2xl font-bold">Settings</h1>
-      </div>
+      <h1 className="text-2xl font-bold">Settings</h1>
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">OpenAI API Key</span>
