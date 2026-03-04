@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient, type JobInfo } from '../api/client'
-import { Alert } from './ui/Alert'
-import { Button } from './ui/Button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { JobCard } from './JobCard'
 
 const POLL_FAILURE_THRESHOLD = 3
@@ -50,14 +50,16 @@ export function JobList({ refreshKey }: JobListProps) {
   }, [fetchJobs])
 
   if (initialLoading) {
-    return <p className="text-gray-500 text-center py-8">Loading jobs...</p>
+    return <p className="text-muted-foreground text-center py-8">Loading jobs...</p>
   }
 
   if (initialError) {
     return (
       <div className="text-center py-8 space-y-2">
-        <Alert variant="error">{initialError}</Alert>
-        <Button variant="secondary" size="sm" onClick={() => { setInitialLoading(true); fetchJobs(true) }}>
+        <Alert variant="destructive">
+          <AlertDescription>{initialError}</AlertDescription>
+        </Alert>
+        <Button variant="outline" size="sm" onClick={() => { setInitialLoading(true); fetchJobs(true) }}>
           Retry
         </Button>
       </div>
@@ -67,10 +69,12 @@ export function JobList({ refreshKey }: JobListProps) {
   return (
     <div className="space-y-3">
       {pollUnstable && (
-        <Alert variant="warning">Server connection is unstable. Retrying automatically...</Alert>
+        <Alert>
+          <AlertDescription>Server connection is unstable. Retrying automatically...</AlertDescription>
+        </Alert>
       )}
       {jobs.length === 0 ? (
-        <p className="text-gray-500 text-center py-8">No translation jobs yet.</p>
+        <p className="text-muted-foreground text-center py-8">No translation jobs yet.</p>
       ) : (
         jobs.map(job => (
           <JobCard key={job.job_id} job={job} onDeleted={() => fetchJobs(false)} />

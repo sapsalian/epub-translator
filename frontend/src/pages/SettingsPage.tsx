@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient, extractErrorMessage, type LanguageOption, type Settings } from '../api/client'
-import { Alert } from '../components/ui/Alert'
-import { Button } from '../components/ui/Button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -58,18 +58,20 @@ export function SettingsPage() {
   if (loadError) {
     return (
       <div className="max-w-lg mx-auto p-6 space-y-4">
-        <Alert variant="error">Failed to load settings: {loadError}</Alert>
-        <Button variant="secondary" onClick={loadSettings}>Retry</Button>
+        <Alert variant="destructive">
+          <AlertDescription>Failed to load settings: {loadError}</AlertDescription>
+        </Alert>
+        <Button variant="outline" onClick={loadSettings}>Retry</Button>
       </div>
     )
   }
 
-  if (!settings) return <div className="p-6 text-center text-gray-500">Loading...</div>
+  if (!settings) return <div className="p-6 text-center text-muted-foreground">Loading...</div>
 
   return (
     <div className="max-w-lg mx-auto p-6 space-y-6">
       <div className="flex items-center gap-4">
-        <Link to="/" className="text-blue-600 hover:underline text-sm">&larr; Back</Link>
+        <Link to="/" className="text-primary hover:underline text-sm">&larr; Back</Link>
         <h1 className="text-2xl font-bold">Settings</h1>
       </div>
 
@@ -77,13 +79,13 @@ export function SettingsPage() {
         <span className="text-sm font-medium">OpenAI API Key</span>
         <input
           type="password"
-          className="w-full border rounded px-3 py-2"
+          className="w-full border rounded px-3 py-2 bg-background text-foreground"
           value={apiKey}
           onChange={e => setApiKey(e.target.value)}
           placeholder={settings.api_key_set ? 'API key is set (enter new to replace)' : 'Enter your API key'}
         />
         {settings.api_key_set && !apiKey && (
-          <p className="text-xs text-green-600">API key is configured.</p>
+          <p className="text-xs text-emerald-600">API key is configured.</p>
         )}
       </label>
 
@@ -91,7 +93,7 @@ export function SettingsPage() {
         <span className="text-sm font-medium">Model</span>
         <input
           type="text"
-          className="w-full border rounded px-3 py-2"
+          className="w-full border rounded px-3 py-2 bg-background text-foreground"
           value={model}
           onChange={e => setModel(e.target.value)}
         />
@@ -101,7 +103,7 @@ export function SettingsPage() {
         <label className="space-y-1">
           <span className="text-sm font-medium">Default Source Language</span>
           <select
-            className="w-full border rounded px-3 py-2"
+            className="w-full border rounded px-3 py-2 bg-background text-foreground"
             value={sourceLang}
             onChange={e => setSourceLang(e.target.value)}
           >
@@ -111,7 +113,7 @@ export function SettingsPage() {
         <label className="space-y-1">
           <span className="text-sm font-medium">Default Target Language</span>
           <select
-            className="w-full border rounded px-3 py-2"
+            className="w-full border rounded px-3 py-2 bg-background text-foreground"
             value={targetLang}
             onChange={e => setTargetLang(e.target.value)}
           >
@@ -120,13 +122,17 @@ export function SettingsPage() {
         </label>
       </div>
 
-      {saveError && <Alert variant="error">{saveError}</Alert>}
+      {saveError && (
+        <Alert variant="destructive">
+          <AlertDescription>{saveError}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex items-center gap-3">
         <Button onClick={handleSave} disabled={saving}>
           {saving ? 'Saving...' : 'Save'}
         </Button>
-        {saved && <span className="text-sm text-green-600">Settings saved.</span>}
+        {saved && <span className="text-sm text-emerald-600">Settings saved.</span>}
       </div>
     </div>
   )

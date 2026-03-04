@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import type { JobInfo } from '../api/client'
 import { apiClient, extractErrorMessage } from '../api/client'
-import { Alert } from './ui/Alert'
-import { Badge } from './ui/Badge'
-import { Button } from './ui/Button'
-import { Progress } from './ui/Progress'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 
-const stateVariant: Record<JobInfo['state'], 'default' | 'success' | 'warning' | 'danger'> = {
-  queued: 'default',
-  processing: 'warning',
-  done: 'success',
-  failed: 'danger',
+const stateVariant: Record<JobInfo['state'], 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  queued: 'secondary',
+  processing: 'default',
+  done: 'outline',
+  failed: 'destructive',
 }
 
 const stateLabel: Record<JobInfo['state'], string> = {
@@ -50,21 +50,25 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
       </div>
 
       {job.state === 'queued' && job.queue_position != null && (
-        <p className="text-sm text-gray-500">Queue position: {job.queue_position}</p>
+        <p className="text-sm text-muted-foreground">Queue position: {job.queue_position}</p>
       )}
 
       {(job.state === 'processing' || job.state === 'done') && (
         <div className="space-y-1">
           <Progress value={job.progress * 100} />
-          <p className="text-xs text-gray-500">{job.stage} - {Math.round(job.progress * 100)}%</p>
+          <p className="text-xs text-muted-foreground">{job.stage} - {Math.round(job.progress * 100)}%</p>
         </div>
       )}
 
       {job.state === 'failed' && job.error && (
-        <p className="text-sm text-red-600">{job.error}</p>
+        <p className="text-sm text-destructive">{job.error}</p>
       )}
 
-      {deleteError && <Alert variant="error">{deleteError}</Alert>}
+      {deleteError && (
+        <Alert variant="destructive">
+          <AlertDescription>{deleteError}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex gap-2 pt-1">
         {job.state === 'done' && job.download_token && (
@@ -72,7 +76,7 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
             <Button size="sm">Download</Button>
           </a>
         )}
-        <Button variant="danger" size="sm" onClick={handleDelete} disabled={deleting}>
+        <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting}>
           {deleting ? 'Deleting...' : 'Delete'}
         </Button>
       </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient, extractErrorMessage, type LanguageOption } from '../api/client'
-import { Alert } from './ui/Alert'
-import { Button } from './ui/Button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 
 interface UploadFormProps {
   onJobCreated: () => void
@@ -70,7 +70,7 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
   return (
     <div className="space-y-4">
       <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}
+        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-border'}`}
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
@@ -84,23 +84,25 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
           onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]) }}
         />
         {file ? (
-          <p className="text-gray-700">{file.name}</p>
+          <p className="text-foreground">{file.name}</p>
         ) : (
-          <p className="text-gray-500">Drop an EPUB file here or click to select</p>
+          <p className="text-muted-foreground">Drop an EPUB file here or click to select</p>
         )}
       </div>
 
       {langError ? (
-        <Alert variant="error">
-          Failed to load languages: {langError}
-          <button className="ml-2 underline" onClick={loadLanguages}>Retry</button>
+        <Alert variant="destructive">
+          <AlertDescription>
+            Failed to load languages: {langError}
+            <button className="ml-2 underline" onClick={loadLanguages}>Retry</button>
+          </AlertDescription>
         </Alert>
       ) : (
         <div className="grid grid-cols-2 gap-4">
           <label className="space-y-1">
             <span className="text-sm font-medium">Source Language</span>
             <select
-              className="w-full border rounded px-3 py-2"
+              className="w-full border rounded px-3 py-2 bg-background text-foreground"
               value={sourceLang}
               onChange={e => setSourceLang(e.target.value)}
             >
@@ -110,7 +112,7 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
           <label className="space-y-1">
             <span className="text-sm font-medium">Target Language</span>
             <select
-              className="w-full border rounded px-3 py-2"
+              className="w-full border rounded px-3 py-2 bg-background text-foreground"
               value={targetLang}
               onChange={e => setTargetLang(e.target.value)}
             >
@@ -123,14 +125,18 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
       <label className="block space-y-1">
         <span className="text-sm font-medium">Custom Instructions (optional)</span>
         <textarea
-          className="w-full border rounded px-3 py-2 h-20 resize-none"
+          className="w-full border rounded px-3 py-2 h-20 resize-none bg-background text-foreground"
           value={customInstructions}
           onChange={e => setCustomInstructions(e.target.value)}
           placeholder="Additional instructions for translation..."
         />
       </label>
 
-      {submitError && <Alert variant="error">{submitError}</Alert>}
+      {submitError && (
+        <Alert variant="destructive">
+          <AlertDescription>{submitError}</AlertDescription>
+        </Alert>
+      )}
 
       <Button onClick={handleSubmit} disabled={!file || loading || !!langError}>
         {loading ? 'Uploading...' : 'Start Translation'}
