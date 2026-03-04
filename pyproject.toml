@@ -5,6 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "epub-translate"
 version = "0.1.0"
+dependencies = [
+    "pywebview>=4.4",
+    "uvicorn[standard]>=0.30",
+    "fastapi>=0.110",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
