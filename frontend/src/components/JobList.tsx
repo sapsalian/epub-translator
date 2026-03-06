@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient, type JobInfo } from '../api/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { JobCard } from './JobCard'
 
 const POLL_FAILURE_THRESHOLD = 3
@@ -29,7 +30,7 @@ export function JobList({ refreshKey }: JobListProps) {
       }
     } catch {
       if (isInitial) {
-        setInitialError('Failed to load jobs')
+        setInitialError('작업 목록을 불러오지 못했습니다.')
         setInitialLoading(false)
       } else {
         consecutiveFailures.current++
@@ -50,7 +51,7 @@ export function JobList({ refreshKey }: JobListProps) {
   }, [fetchJobs])
 
   if (initialLoading) {
-    return <p className="text-muted-foreground text-center py-8">Loading jobs...</p>
+    return <p className="text-muted-foreground text-center py-8 text-sm">로딩 중...</p>
   }
 
   if (initialError) {
@@ -60,7 +61,7 @@ export function JobList({ refreshKey }: JobListProps) {
           <AlertDescription>{initialError}</AlertDescription>
         </Alert>
         <Button variant="outline" size="sm" onClick={() => { setInitialLoading(true); fetchJobs(true) }}>
-          Retry
+          다시 시도
         </Button>
       </div>
     )
@@ -68,17 +69,31 @@ export function JobList({ refreshKey }: JobListProps) {
 
   return (
     <div className="space-y-3">
-      {pollUnstable && (
-        <Alert>
-          <AlertDescription>Server connection is unstable. Retrying automatically...</AlertDescription>
-        </Alert>
-      )}
+      {/* Section header */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">
+          번역 작업{jobs.length > 0 && ` (${jobs.length})`}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <div className={cn('w-1.5 h-1.5 rounded-full', pollUnstable ? 'bg-warning' : 'bg-success')} />
+          <span className="text-xs text-muted-foreground">
+            {pollUnstable ? '연결 불안정' : '연결됨'}
+          </span>
+        </div>
+      </div>
+
+      {/* Job list */}
       {jobs.length === 0 ? (
-        <p className="text-muted-foreground text-center py-8">No translation jobs yet.</p>
+        <div className="py-16 text-center">
+          <p className="text-sm text-muted-foreground">아직 번역 작업이 없습니다</p>
+          <p className="text-xs text-muted-foreground mt-1">위에서 EPUB 파일을 업로드해서 번역을 시작하세요</p>
+        </div>
       ) : (
-        jobs.map(job => (
-          <JobCard key={job.job_id} job={job} onDeleted={() => fetchJobs(false)} />
-        ))
+        <div className="divide-y divide-border rounded-lg border overflow-hidden">
+          {jobs.map(job => (
+            <JobCard key={job.job_id} job={job} onDeleted={() => fetchJobs(false)} />
+          ))}
+        </div>
       )}
     </div>
   )

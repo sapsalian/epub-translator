@@ -1,4 +1,5 @@
 import { HashRouter, Routes, Route } from 'react-router-dom'
+import { Toaster } from '@/components/ui/sonner'
 import { AppShell } from './components/layout/AppShell'
 import { MainPage } from './pages/MainPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -13,6 +14,7 @@ export default function App() {
           <Route path="/jobs/:id" element={null} />
         </Routes>
       </AppShell>
+      <Toaster />
     </HashRouter>
   )
 }

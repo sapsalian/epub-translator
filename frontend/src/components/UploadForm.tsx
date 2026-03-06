@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { FileText, Settings as SettingsIcon, X } from 'lucide-react'
 import { apiClient, extractErrorMessage, type LanguageOption } from '../api/client'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
 
 interface UploadFormProps {
   onJobCreated: () => void
@@ -9,7 +13,6 @@ interface UploadFormProps {
 
 export function UploadForm({ onJobCreated }: UploadFormProps) {
   const [languages, setLanguages] = useState<LanguageOption[]>([])
-  const [langError, setLangError] = useState<string | null>(null)
   const [sourceLang, setSourceLang] = useState('')
   const [targetLang, setTargetLang] = useState('')
   const [customInstructions, setCustomInstructions] = useState('')
@@ -17,31 +20,49 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
   const [loading, setLoading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const loadLanguages = useCallback(async () => {
-    setLangError(null)
-    try {
-      const langs = await apiClient.getLanguages()
-      setLanguages(langs)
-      if (langs.length > 0) {
-        setSourceLang(langs[0].code)
-        setTargetLang(langs.length > 1 ? langs[1].code : langs[0].code)
-      }
-    } catch (err) {
-      setLangError(extractErrorMessage(err))
-    }
-  }, [])
-
   useEffect(() => {
-    loadLanguages()
-  }, [loadLanguages])
+    const init = async () => {
+      const [settingsResult, langsResult] = await Promise.allSettled([
+        apiClient.getSettings(),
+        apiClient.getLanguages(),
+      ])
+
+      const langs = langsResult.status === 'fulfilled' ? langsResult.value : []
+      setLanguages(langs)
+
+      let defaultSource = langs[0]?.code ?? ''
+      let defaultTarget = langs[1]?.code ?? langs[0]?.code ?? ''
+
+      if (settingsResult.status === 'fulfilled') {
+        const { source_language, target_language } = settingsResult.value
+        if (source_language && langs.some(l => l.code === source_language)) {
+          defaultSource = source_language
+        }
+        if (target_language && langs.some(l => l.code === target_language)) {
+          defaultTarget = target_language
+        }
+      }
+
+      setSourceLang(defaultSource)
+      setTargetLang(defaultTarget)
+    }
+    init()
+  }, [])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
     const dropped = e.dataTransfer.files[0]
     if (dropped?.name.endsWith('.epub')) setFile(dropped)
+  }, [])
+
+  const clearFile = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setFile(null)
+    if (inputRef.current) inputRef.current.value = ''
   }, [])
 
   const handleSubmit = async () => {
@@ -68,13 +89,12 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-1">
       <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-border'}`}
+        className={`flex items-center gap-2 p-2 rounded-lg border transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-border bg-background'}`}
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
       >
         <input
           ref={inputRef}
@@ -83,64 +103,89 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
           className="hidden"
           onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]) }}
         />
-        {file ? (
-          <p className="text-foreground">{file.name}</p>
-        ) : (
-          <p className="text-muted-foreground">Drop an EPUB file here or click to select</p>
-        )}
+
+        {/* Drop zone / file name */}
+        <div
+          className="flex flex-1 min-w-0 items-center gap-1.5 px-1 cursor-pointer"
+          onClick={() => inputRef.current?.click()}
+        >
+          <FileText size={14} className={file ? 'text-foreground shrink-0' : 'text-muted-foreground shrink-0'} />
+          <span className={`text-sm truncate ${file ? 'text-foreground' : 'text-muted-foreground'}`}>
+            {file ? file.name : 'EPUB 파일 드롭 또는 클릭'}
+          </span>
+          {file && (
+            <button
+              type="button"
+              onClick={clearFile}
+              className="ml-auto shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+
+        {/* Language selects */}
+        <Select value={sourceLang} onValueChange={setSourceLang}>
+          <SelectTrigger className="w-28 h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {languages.map(l => (
+              <SelectItem key={l.code} value={l.code} className="text-xs">{l.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <span className="text-xs text-muted-foreground shrink-0">→</span>
+
+        <Select value={targetLang} onValueChange={setTargetLang}>
+          <SelectTrigger className="w-28 h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {languages.map(l => (
+              <SelectItem key={l.code} value={l.code} className="text-xs">{l.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Advanced settings */}
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+              <SettingsIcon size={14} />
+            </Button>
+          </SheetTrigger>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>번역 설정</SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 space-y-3 px-1">
+              <Label>지시사항 (선택)</Label>
+              <Textarea
+                value={customInstructions}
+                onChange={e => setCustomInstructions(e.target.value)}
+                placeholder="번역에 대한 추가 지시사항..."
+                className="h-32 resize-none text-sm"
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Submit */}
+        <Button
+          size="sm"
+          className="shrink-0"
+          onClick={handleSubmit}
+          disabled={!file || loading || languages.length === 0}
+        >
+          {loading ? '업로드 중...' : '번역 →'}
+        </Button>
       </div>
 
-      {langError ? (
-        <Alert variant="destructive">
-          <AlertDescription>
-            Failed to load languages: {langError}
-            <button className="ml-2 underline" onClick={loadLanguages}>Retry</button>
-          </AlertDescription>
-        </Alert>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          <label className="space-y-1">
-            <span className="text-sm font-medium">Source Language</span>
-            <select
-              className="w-full border rounded px-3 py-2 bg-background text-foreground"
-              value={sourceLang}
-              onChange={e => setSourceLang(e.target.value)}
-            >
-              {languages.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium">Target Language</span>
-            <select
-              className="w-full border rounded px-3 py-2 bg-background text-foreground"
-              value={targetLang}
-              onChange={e => setTargetLang(e.target.value)}
-            >
-              {languages.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
-            </select>
-          </label>
-        </div>
-      )}
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Custom Instructions (optional)</span>
-        <textarea
-          className="w-full border rounded px-3 py-2 h-20 resize-none bg-background text-foreground"
-          value={customInstructions}
-          onChange={e => setCustomInstructions(e.target.value)}
-          placeholder="Additional instructions for translation..."
-        />
-      </label>
-
       {submitError && (
-        <Alert variant="destructive">
-          <AlertDescription>{submitError}</AlertDescription>
-        </Alert>
+        <p className="text-xs text-destructive px-1">{submitError}</p>
       )}
-
-      <Button onClick={handleSubmit} disabled={!file || loading || !!langError}>
-        {loading ? 'Uploading...' : 'Start Translation'}
-      </Button>
     </div>
   )
 }
