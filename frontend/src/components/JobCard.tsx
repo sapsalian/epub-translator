@@ -64,6 +64,7 @@ interface JobCardProps {
 
 export function JobCard({ job, onDeleted }: JobCardProps) {
   const [deleting, setDeleting] = useState(false)
+  const [retrying, setRetrying] = useState(false)
 
   const handleDownload = async () => {
     if (!job.download_token) return
@@ -129,7 +130,17 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-primary"
-              onClick={() => toast.info('재시도 기능은 곧 추가될 예정입니다.')}
+              disabled={retrying}
+              onClick={async () => {
+                setRetrying(true)
+                try {
+                  await apiClient.retryJob(job.job_id)
+                } catch {
+                  toast.error('재시도에 실패했습니다.')
+                } finally {
+                  setRetrying(false)
+                }
+              }}
             >
               <RotateCcw size={13} />
             </Button>

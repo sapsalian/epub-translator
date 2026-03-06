@@ -94,6 +94,28 @@ async def get_job(request: Request, job_id: str):
     return result
 
 
+@router.post("/jobs/{job_id}/retry")
+async def retry_job(request: Request, job_id: str):
+    manager = request.app.state.job_manager
+    job = manager.get_job(job_id)
+    if job is None:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    if job.state.value != "failed":
+        return JSONResponse({"error": "Only failed jobs can be retried"}, status_code=400)
+
+    from ..jobs.models import JobState
+
+    job.state = JobState.QUEUED
+    job.progress = 0.0
+    job.stage = ""
+    job.error = ""
+    job.download_token = None
+    job.output_path = None
+    manager.save()
+    await manager.queue.put(job_id)
+    return {"ok": True}
+
+
 @router.delete("/jobs/{job_id}")
 async def delete_job(request: Request, job_id: str):
     manager = request.app.state.job_manager

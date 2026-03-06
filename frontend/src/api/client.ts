@@ -54,5 +54,6 @@ export const apiClient = {
 
   listJobs: () => api.get<JobInfo[]>('/api/jobs').then(r => r.data),
   getJob: (jobId: string) => api.get<JobInfo>(`/api/jobs/${jobId}`).then(r => r.data),
+  retryJob: (jobId: string) => api.post<{ ok: boolean }>(`/api/jobs/${jobId}/retry`).then(r => r.data),
   deleteJob: (jobId: string) => api.delete<{ ok: boolean }>(`/api/jobs/${jobId}`).then(r => r.data),
 }
