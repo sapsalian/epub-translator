@@ -1,4 +1,10 @@
 import { useState } from 'react'
+
+declare global {
+  interface Window {
+    pywebview?: { api: { download: (token: string, filename: string) => Promise<boolean> } }
+  }
+}
 import { Download, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { JobInfo } from '../api/client'
@@ -40,6 +46,20 @@ interface JobCardProps {
 export function JobCard({ job, onDeleted }: JobCardProps) {
   const [deleting, setDeleting] = useState(false)
 
+  const handleDownload = async () => {
+    if (!job.download_token) return
+    if (window.pywebview) {
+      await window.pywebview.api.download(job.download_token, job.filename)
+    } else {
+      const a = document.createElement('a')
+      a.href = `/download/${job.download_token}`
+      a.download = ''
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  }
+
   const handleDelete = async () => {
     setDeleting(true)
     try {
@@ -78,11 +98,9 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
         {/* Hover actions */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           {job.state === 'done' && job.download_token && (
-            <a href={`/download/${job.download_token}`} download>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <Download size={13} />
-              </Button>
-            </a>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDownload}>
+              <Download size={13} />
+            </Button>
           )}
           <Button
             variant="ghost"
