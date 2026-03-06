@@ -31,7 +31,7 @@ function NavItem({ to, icon, label, end }: NavItemProps) {
 
 export function Sidebar() {
   return (
-    <aside className="flex flex-col w-[200px] shrink-0 h-screen bg-sidebar border-r border-border">
+    <aside className="hidden md:flex flex-col w-[200px] shrink-0 h-screen bg-sidebar border-r border-border">
       {/* macOS 트래픽라이트 공간 + 앱 타이틀 */}
       <div
         className="pt-10 px-4 pb-3 select-none"

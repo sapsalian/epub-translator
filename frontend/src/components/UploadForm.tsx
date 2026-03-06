@@ -4,7 +4,7 @@ import { apiClient, extractErrorMessage, type LanguageOption } from '../api/clie
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 
 interface UploadFormProps {
@@ -91,7 +91,7 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
   return (
     <div className="space-y-1">
       <div
-        className={`flex items-center gap-2 p-2 rounded-lg border transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-border bg-background'}`}
+        className={`flex flex-col md:flex-row md:items-center gap-2 p-2 rounded-lg border transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-border bg-background'}`}
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
@@ -104,84 +104,102 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
           onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]) }}
         />
 
-        {/* Drop zone / file name */}
-        <div
-          className="flex flex-1 min-w-0 items-center gap-1.5 px-1 cursor-pointer"
-          onClick={() => inputRef.current?.click()}
-        >
-          <FileText size={14} className={file ? 'text-foreground shrink-0' : 'text-muted-foreground shrink-0'} />
-          <span className={`text-sm truncate ${file ? 'text-foreground' : 'text-muted-foreground'}`}>
-            {file ? file.name : 'EPUB 파일 드롭 또는 클릭'}
-          </span>
-          {file && (
-            <button
-              type="button"
-              onClick={clearFile}
-              className="ml-auto shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X size={13} />
-            </button>
-          )}
+        {/* Row 1: Drop zone + mobile settings button */}
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div
+            className="flex flex-1 min-w-0 items-center gap-1.5 px-1 cursor-pointer"
+            onClick={() => inputRef.current?.click()}
+          >
+            <FileText size={14} className={file ? 'text-foreground shrink-0' : 'text-muted-foreground shrink-0'} />
+            <span className={`text-sm truncate ${file ? 'text-foreground' : 'text-muted-foreground'}`}>
+              {file ? file.name : 'EPUB 파일 드롭 또는 클릭'}
+            </span>
+            {file && (
+              <button
+                type="button"
+                onClick={clearFile}
+                className="ml-auto shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Settings button (mobile only) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 md:hidden"
+            onClick={() => setSheetOpen(true)}
+          >
+            <SettingsIcon size={14} />
+          </Button>
         </div>
 
-        {/* Language selects */}
-        <Select value={sourceLang} onValueChange={setSourceLang}>
-          <SelectTrigger className="w-28 h-8 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {languages.map(l => (
-              <SelectItem key={l.code} value={l.code} className="text-xs">{l.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Row 2 (mobile) / continuation (desktop): language selects + settings + submit */}
+        <div className="flex items-center gap-2">
+          <Select value={sourceLang} onValueChange={setSourceLang}>
+            <SelectTrigger className="flex-1 md:flex-none md:w-28 h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {languages.map(l => (
+                <SelectItem key={l.code} value={l.code} className="text-xs">{l.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <span className="text-xs text-muted-foreground shrink-0">→</span>
+          <span className="text-xs text-muted-foreground shrink-0">→</span>
 
-        <Select value={targetLang} onValueChange={setTargetLang}>
-          <SelectTrigger className="w-28 h-8 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {languages.map(l => (
-              <SelectItem key={l.code} value={l.code} className="text-xs">{l.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <Select value={targetLang} onValueChange={setTargetLang}>
+            <SelectTrigger className="flex-1 md:flex-none md:w-28 h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {languages.map(l => (
+                <SelectItem key={l.code} value={l.code} className="text-xs">{l.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        {/* Advanced settings */}
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-              <SettingsIcon size={14} />
-            </Button>
-          </SheetTrigger>
-          <SheetContent>
-            <SheetHeader>
-              <SheetTitle>번역 설정</SheetTitle>
-            </SheetHeader>
-            <div className="mt-6 space-y-3 px-1">
-              <Label>지시사항 (선택)</Label>
-              <Textarea
-                value={customInstructions}
-                onChange={e => setCustomInstructions(e.target.value)}
-                placeholder="번역에 대한 추가 지시사항..."
-                className="h-32 resize-none text-sm"
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
+          {/* Settings button (desktop only) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 hidden md:inline-flex"
+            onClick={() => setSheetOpen(true)}
+          >
+            <SettingsIcon size={14} />
+          </Button>
 
-        {/* Submit */}
-        <Button
-          size="sm"
-          className="shrink-0"
-          onClick={handleSubmit}
-          disabled={!file || loading || languages.length === 0}
-        >
-          {loading ? '업로드 중...' : '번역 →'}
-        </Button>
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={handleSubmit}
+            disabled={!file || loading || languages.length === 0}
+          >
+            {loading ? '업로드 중...' : '번역 →'}
+          </Button>
+        </div>
       </div>
+
+      {/* Sheet controlled via state (no SheetTrigger needed) */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>번역 설정</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 space-y-3 px-1">
+            <Label>지시사항 (선택)</Label>
+            <Textarea
+              value={customInstructions}
+              onChange={e => setCustomInstructions(e.target.value)}
+              placeholder="번역에 대한 추가 지시사항..."
+              className="h-32 resize-none text-sm"
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {submitError && (
         <p className="text-xs text-destructive px-1">{submitError}</p>

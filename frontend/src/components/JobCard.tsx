@@ -119,7 +119,7 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
         </Badge>
 
         {/* Hover actions */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
           {job.state === 'done' && job.download_token && (
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDownload}>
               <Download size={13} />

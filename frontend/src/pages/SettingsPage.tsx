@@ -56,7 +56,7 @@ export function SettingsPage() {
 
   if (loadError) {
     return (
-      <div className="max-w-lg mx-auto p-6 space-y-4">
+      <div className="max-w-lg mx-auto p-4 md:p-6 space-y-4">
         <Alert variant="destructive">
           <AlertDescription>설정을 불러오지 못했습니다: {loadError}</AlertDescription>
         </Alert>
@@ -70,7 +70,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto p-6 space-y-6">
+    <div className="max-w-lg mx-auto p-4 md:p-6 space-y-6">
       {/* API 설정 섹션 */}
       <div className="space-y-4">
         <div>
@@ -95,7 +95,7 @@ export function SettingsPage() {
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">번역 기본값</p>
           <Separator className="mt-1.5" />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>기본 출발 언어</Label>
             <Select value={sourceLang} onValueChange={setSourceLang}>
