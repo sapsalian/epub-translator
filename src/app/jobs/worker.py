@@ -89,6 +89,7 @@ async def run_worker(
             job.state = JobState.DONE
             job.progress = 1.0
             job.stage = "done"
+            job.output_path = result.output_path
             job.download_token = manager.register_download(Path(result.output_path))
             manager.save()
 

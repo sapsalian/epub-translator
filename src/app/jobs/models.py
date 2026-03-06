@@ -27,6 +27,7 @@ class JobInfo:
     error: str = ""
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     download_token: str | None = None
+    output_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,6 +43,7 @@ class JobInfo:
             "error": self.error,
             "created_at": self.created_at,
             "download_token": self.download_token,
+            "output_path": self.output_path,
         }
 
     @classmethod
@@ -59,4 +61,5 @@ class JobInfo:
             error=data.get("error", ""),
             created_at=data.get("created_at", datetime.now().isoformat()),
             download_token=data.get("download_token"),
+            output_path=data.get("output_path"),
         )

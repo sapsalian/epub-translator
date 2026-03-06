@@ -23,6 +23,8 @@ class JobManager:
                 for item in data:
                     job = JobInfo.from_dict(item)
                     self._jobs[job.job_id] = job
+                    if job.download_token and job.output_path:
+                        self._tokens[job.download_token] = Path(job.output_path)
             except (json.JSONDecodeError, KeyError):
                 pass
 
