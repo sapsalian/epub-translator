@@ -14,6 +14,7 @@ class JobManager:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._jobs: dict[str, JobInfo] = {}
         self._tokens: dict[str, Path] = {}
+        self._subscribers: set[asyncio.Queue[str]] = set()
         self._load()
 
     def _load(self) -> None:
@@ -33,9 +34,22 @@ class JobManager:
         data = [job.to_dict() for job in self._jobs.values()]
         self._jobs_path.write_text(json.dumps(data, indent=2))
 
+    def subscribe(self) -> asyncio.Queue[str]:
+        q: asyncio.Queue[str] = asyncio.Queue()
+        self._subscribers.add(q)
+        return q
+
+    def unsubscribe(self, q: asyncio.Queue[str]) -> None:
+        self._subscribers.discard(q)
+
+    def _notify(self) -> None:
+        for q in self._subscribers:
+            q.put_nowait("update")
+
     async def add_job(self, job: JobInfo) -> None:
         self._jobs[job.job_id] = job
         self._save()
+        self._notify()
         await self._queue.put(job.job_id)
 
     def get_job(self, job_id: str) -> JobInfo | None:
@@ -48,6 +62,7 @@ class JobManager:
         if job_id in self._jobs:
             del self._jobs[job_id]
             self._save()
+            self._notify()
             return True
         return False
 
@@ -73,6 +88,7 @@ class JobManager:
 
     def save(self) -> None:
         self._save()
+        self._notify()
 
     @property
     def queue(self) -> asyncio.Queue[str]:

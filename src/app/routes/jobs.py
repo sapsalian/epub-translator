@@ -1,9 +1,11 @@
 """Job management endpoints."""
 
+import asyncio
+import json
 import uuid
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..jobs.models import JobInfo
@@ -49,6 +51,35 @@ async def list_jobs(request: Request):
     manager = request.app.state.job_manager
     jobs = manager.list_jobs()
     return [job.to_dict() for job in jobs]
+
+
+@router.get("/jobs/stream")
+async def stream_jobs(request: Request):
+    manager = request.app.state.job_manager
+
+    async def event_generator():
+        jobs = [j.to_dict() for j in manager.list_jobs()]
+        yield f"data: {json.dumps(jobs)}\n\n"
+
+        queue = manager.subscribe()
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    await asyncio.wait_for(queue.get(), timeout=30)
+                    jobs = [j.to_dict() for j in manager.list_jobs()]
+                    yield f"data: {json.dumps(jobs)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        finally:
+            manager.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/jobs/{job_id}")
