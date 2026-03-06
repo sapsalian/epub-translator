@@ -5,10 +5,21 @@ declare global {
     pywebview?: { api: { download: (token: string, filename: string) => Promise<boolean> } }
   }
 }
-import { Download, Trash2 } from 'lucide-react'
+import { Download, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { JobInfo } from '../api/client'
 import { apiClient } from '../api/client'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -23,11 +34,19 @@ const stateVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'ou
 }
 
 const stateLabel: Record<string, string> = {
-  queued: 'Queued',
-  processing: 'Processing',
-  done: 'Done',
-  failed: 'Failed',
-  awaiting_review: 'Review',
+  queued: '대기 중',
+  processing: '번역 중',
+  done: '완료',
+  failed: '실패',
+  awaiting_review: '검토 필요',
+}
+
+const stageLabel: Record<string, string> = {
+  EXTRACTING: '파일 분석 중',
+  PREPROCESSING: '사전 처리 중',
+  TRANSLATING: '번역 중',
+  INSERTING: '파일 생성 중',
+  done: '완료',
 }
 
 const accentColor: Record<string, string> = {
@@ -72,7 +91,8 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
     }
   }
 
-  const showProgress = job.state === 'processing' || job.state === 'done'
+  const showProgress = job.state === 'processing'
+  const isActiveJob = job.state === 'queued' || job.state === 'processing'
 
   return (
     <div className="relative flex flex-col gap-1 px-4 py-3 group">
@@ -84,7 +104,9 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
         <span className="flex-1 text-sm font-medium truncate">{job.filename}</span>
 
         {job.state === 'processing' && job.stage && (
-          <span className="text-xs text-muted-foreground shrink-0">{job.stage}</span>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {stageLabel[job.stage] ?? job.stage}
+          </span>
         )}
 
         {job.state === 'queued' && job.queue_position != null && (
@@ -102,15 +124,47 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
               <Download size={13} />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            <Trash2 size={13} />
-          </Button>
+          {job.state === 'failed' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-primary"
+              onClick={() => toast.info('재시도 기능은 곧 추가될 예정입니다.')}
+            >
+              <RotateCcw size={13} />
+            </Button>
+          )}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                disabled={deleting}
+              >
+                <Trash2 size={13} />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>작업을 삭제할까요?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {isActiveJob
+                    ? '현재 진행 중인 작업입니다. 삭제하면 번역이 중단되며 복구할 수 없습니다.'
+                    : '삭제하면 작업 기록이 제거됩니다. 이 작업은 되돌릴 수 없습니다.'}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>취소</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  삭제
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
