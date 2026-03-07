@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -42,10 +43,12 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     app = FastAPI(title="EPUB Translator", lifespan=lifespan)
 
+    allow_all_origins = os.environ.get("ALLOW_ALL_ORIGINS", "0") == "1"
+    cors_origins = ["*"] if allow_all_origins else ["http://localhost:5173"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
-        allow_credentials=True,
+        allow_origins=cors_origins,
+        allow_credentials=not allow_all_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )
