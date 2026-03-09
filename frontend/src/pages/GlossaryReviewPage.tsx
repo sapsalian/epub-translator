@@ -106,7 +106,9 @@ export function GlossaryReviewPage() {
     <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
       <div className="space-y-1">
         <h1 className="text-lg font-semibold">단어집 검토</h1>
-        <p className="text-sm text-muted-foreground">용어를 수정/추가/삭제한 후 진행을 누르면 번역이 시작됩니다.</p>
+        <p className="text-sm text-muted-foreground">
+          용어를 수정/추가/삭제한 뒤 번역 시작을 누르면, 변경사항을 먼저 저장하고 번역을 시작합니다.
+        </p>
       </div>
 
       {dirty && (
@@ -179,7 +181,7 @@ export function GlossaryReviewPage() {
           {saving ? '저장 중...' : '저장'}
         </Button>
         <Button onClick={onContinue} disabled={saving || continuing || !!validationError}>
-          {continuing ? '진행 중...' : '진행'}
+          {continuing ? '번역 시작 중...' : dirty ? '저장 후 번역 시작' : '번역 시작'}
         </Button>
       </div>
     </div>
