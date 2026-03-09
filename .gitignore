@@ -8,3 +8,6 @@ __pycache__/
 .nicegui
 AGENTS.md
 GEMINI.md
+docs/DEVELOP_WORKFLOW.md
+tools/
+tests/tools/
