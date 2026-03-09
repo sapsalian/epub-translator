@@ -5,6 +5,9 @@ import io
 import pytest
 
 from src.pipeline.models import Language
+from src.pipeline.persistence import CheckpointManager, FilePersistenceBackend
+from src.pipeline.models import PreprocessResult, TermDictionary
+from src.app.jobs.models import JobState
 
 
 class TestHealthRoute:
@@ -100,6 +103,25 @@ class TestJobsRoute:
         assert "job_id" in resp.json()
 
     @pytest.mark.asyncio
+    async def test_create_job_with_workflow_mode(self, client):
+        upload_id = await self._upload_epub(client)
+        resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+            "workflow_mode": "glossary_review",
+            "workflow_options": {"draft": True},
+        })
+        assert resp.status_code == 200
+        job_id = resp.json()["job_id"]
+
+        detail = await client.get(f"/api/jobs/{job_id}")
+        assert detail.status_code == 200
+        data = detail.json()
+        assert data["workflow_mode"] == "glossary_review"
+        assert data["workflow_options"] == {"draft": True}
+
+    @pytest.mark.asyncio
     async def test_create_job_invalid_upload(self, client):
         resp = await client.post("/api/jobs", json={
             "upload_id": "nonexistent",
@@ -139,6 +161,8 @@ class TestJobsRoute:
         assert data["job_id"] == job_id
         assert "queue_position" in data
         assert data["state"] == "queued"
+        assert data["workflow_mode"] == "classic"
+        assert data["workflow_options"] == {}
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_job(self, client):
@@ -166,6 +190,87 @@ class TestJobsRoute:
     async def test_delete_nonexistent_job(self, client):
         resp = await client.delete("/api/jobs/nonexistent")
         assert resp.status_code == 404
+
+    async def _seed_glossary_checkpoint(self, test_app, job_id: str, epub_id: str, target_language: str):
+        checkpoint_path = test_app.state.config.checkpoint_dir / job_id
+        backend = FilePersistenceBackend(str(checkpoint_path))
+        await backend.initialize()
+        manager = CheckpointManager(backend)
+        preprocess = PreprocessResult(
+            epub_id=epub_id,
+            term_dictionary=TermDictionary(
+                source_language=Language.ENGLISH,
+                target_language=Language(target_language),
+                mappings={"Hellhounds": "헬하운드", "Milo": "마일로"},
+            ),
+            summaries={},
+            epub_summary="",
+        )
+        await manager.save_preprocess(preprocess, target_language)
+
+    @pytest.mark.asyncio
+    async def test_get_job_glossary(self, client, test_app):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+            "workflow_mode": "glossary_review",
+        })
+        job_id = create_resp.json()["job_id"]
+
+        manager = test_app.state.job_manager
+        job = manager.get_job(job_id)
+        assert job is not None
+        job.state = JobState.AWAITING_REVIEW
+        job.epub_id = "epub-123"
+        manager.save()
+        await self._seed_glossary_checkpoint(test_app, job_id, "epub-123", "ko")
+
+        resp = await client.get(f"/api/jobs/{job_id}/glossary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["has_edits"] is False
+        assert any(item["source"] == "Hellhounds" for item in data["terms"])
+
+    @pytest.mark.asyncio
+    async def test_put_job_glossary_and_continue(self, client, test_app):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+            "workflow_mode": "glossary_review",
+        })
+        job_id = create_resp.json()["job_id"]
+
+        manager = test_app.state.job_manager
+        job = manager.get_job(job_id)
+        assert job is not None
+        job.state = JobState.AWAITING_REVIEW
+        job.epub_id = "epub-123"
+        manager.save()
+        await self._seed_glossary_checkpoint(test_app, job_id, "epub-123", "ko")
+
+        put_resp = await client.put(
+            f"/api/jobs/{job_id}/glossary",
+            json={"terms": [{"source": "Milo", "target": "밀로"}]},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json()["ok"] is True
+
+        get_resp = await client.get(f"/api/jobs/{job_id}/glossary")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["has_edits"] is True
+        assert get_resp.json()["terms"] == [{"source": "Milo", "target": "밀로"}]
+
+        cont_resp = await client.post(f"/api/jobs/{job_id}/continue")
+        assert cont_resp.status_code == 200
+        assert cont_resp.json()["ok"] is True
+        updated = manager.get_job(job_id)
+        assert updated is not None
+        assert updated.state.value == "queued"
+        assert updated.workflow_options.get("review_approved") is True
 
 
 class TestDownloadRoute:

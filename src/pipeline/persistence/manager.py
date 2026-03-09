@@ -6,6 +6,7 @@ abstracting away the key management and serialization details.
 """
 
 import asyncio
+import json
 import logging
 from datetime import datetime
 
@@ -31,6 +32,7 @@ class CheckpointManager:
     Key patterns:
         - {epub_id}:extraction -> ExtractionResult
         - {epub_id}:preprocess:{lang} -> PreprocessResult
+        - {epub_id}:glossary_edit:{lang} -> edited term dictionary
         - {epub_id}:translation:{xhtml_id}:{lang} -> TranslationResult
         - {epub_id}:status:{lang} -> JobStatus
     """
@@ -71,6 +73,12 @@ class CheckpointManager:
         """Key for translation result."""
         lang_code = lang.value if isinstance(lang, Language) else lang
         return f"{epub_id}:translation:{xhtml_id}:{lang_code}"
+
+    @staticmethod
+    def _glossary_edit_key(epub_id: str, lang: Language | str) -> str:
+        """Key for user-edited glossary."""
+        lang_code = lang.value if isinstance(lang, Language) else lang
+        return f"{epub_id}:glossary_edit:{lang_code}"
 
     @staticmethod
     def _status_key(epub_id: str, lang: Language | str) -> str:
@@ -159,6 +167,31 @@ class CheckpointManager:
         """Check if preprocess result exists."""
         key = self._preprocess_key(epub_id, lang)
         return await self._backend.exists(key)
+
+    async def save_glossary_edit(
+        self,
+        epub_id: str,
+        lang: Language | str,
+        mappings: dict[str, str],
+    ) -> None:
+        """Save user-edited glossary mappings."""
+        key = self._glossary_edit_key(epub_id, lang)
+        payload = json.dumps({"mappings": mappings}, ensure_ascii=False, indent=2)
+        await self._backend.save(key, payload)
+
+    async def load_glossary_edit(
+        self,
+        epub_id: str,
+        lang: Language | str,
+    ) -> dict[str, str] | None:
+        """Load user-edited glossary mappings."""
+        key = self._glossary_edit_key(epub_id, lang)
+        data = await self._backend.load(key)
+        if data is None:
+            return None
+        parsed = json.loads(data)
+        mappings = parsed.get("mappings", {})
+        return mappings if isinstance(mappings, dict) else {}
 
     # =========================================================================
     # Translation
@@ -488,6 +521,12 @@ class CheckpointManager:
                 if len(parts) >= 4 and parts[3] == lang_code:
                     await self._backend.delete(key)
                     count += 1
+
+            # Clear edited glossary
+            key = self._glossary_edit_key(epub_id, lang)
+            if await self._backend.exists(key):
+                await self._backend.delete(key)
+                count += 1
 
             # Clear status
             key = self._status_key(epub_id, lang)

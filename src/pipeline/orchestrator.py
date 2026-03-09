@@ -17,6 +17,7 @@ from .models import (
     InsertionResult,
     Language,
     PreprocessResult,
+    TermDict,
     TranslationResult,
     TranslationTask,
     XhtmlExtraction,
@@ -86,7 +87,13 @@ class PipelineOrchestrator:
             self._config.checkpoint_dir,
         )
 
-    async def run(self, epub_path: Path) -> InsertionResult:
+    async def run(
+        self,
+        epub_path: Path,
+        *,
+        stop_after_preprocess: bool = False,
+        glossary_overrides: TermDict | None = None,
+    ) -> InsertionResult | None:
         """
         Run the complete translation pipeline for a single EPUB.
 
@@ -94,6 +101,9 @@ class PipelineOrchestrator:
 
         Args:
             epub_path: Path to the EPUB file.
+            stop_after_preprocess: If True, pause after preprocess stage.
+            glossary_overrides: Optional source->target mapping to replace
+                preprocess term dictionary during translation.
 
         Returns:
             InsertionResult with the translated EPUB path.
@@ -151,12 +161,20 @@ class PipelineOrchestrator:
                     epub_id, lang, JobStage.PREPROCESSING, completed=1, total=1
                 )
 
+            if stop_after_preprocess:
+                logger.info("Paused after preprocess for review (epub_id=%s)", epub_id)
+                return None
+
             # Stage 3: Translation
             if resume_stage in (JobStage.EXTRACTING, JobStage.PREPROCESSING, JobStage.TRANSLATING):
                 if extraction_result is None:
                     extraction_result = await self._checkpoint_manager.load_extraction(epub_id)
 
                 preprocess_result = await self._checkpoint_manager.load_preprocess(epub_id, lang)
+                if preprocess_result is None:
+                    raise RuntimeError("Preprocess result missing for translation stage")
+                if glossary_overrides is not None:
+                    preprocess_result.term_dictionary.mappings = glossary_overrides
 
                 await self._run_translation(
                     epub_id=epub_id,

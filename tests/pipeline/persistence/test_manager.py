@@ -218,6 +218,26 @@ class TestTranslationCheckpoint:
         assert xhtml_ids == {"xhtml001", "xhtml002"}
 
 
+class TestGlossaryCheckpoint:
+    """Tests for edited glossary checkpoint operations."""
+
+    @pytest.mark.asyncio
+    async def test_save_and_load_glossary_edit(self, manager: CheckpointManager):
+        epub_id = "test-epub"
+        lang = Language.KOREAN
+        mappings = {"Milo": "밀로", "Hellhounds": "헬하운드"}
+
+        await manager.save_glossary_edit(epub_id, lang, mappings)
+        loaded = await manager.load_glossary_edit(epub_id, lang)
+
+        assert loaded == mappings
+
+    @pytest.mark.asyncio
+    async def test_load_glossary_edit_missing(self, manager: CheckpointManager):
+        loaded = await manager.load_glossary_edit("missing", Language.KOREAN)
+        assert loaded is None
+
+
 class TestJobStatus:
     """Tests for job status operations."""
 

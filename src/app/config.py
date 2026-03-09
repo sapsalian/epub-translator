@@ -32,6 +32,10 @@ class AppConfig:
     def checkpoint_dir(self) -> Path:
         return self.base_dir / "checkpoints"
 
+    @property
+    def workspace_dir(self) -> Path:
+        return self.base_dir / "workspaces"
+
     def ensure_dirs(self) -> None:
-        for d in (self.upload_dir, self.output_dir, self.checkpoint_dir):
+        for d in (self.upload_dir, self.output_dir, self.checkpoint_dir, self.workspace_dir):
             d.mkdir(parents=True, exist_ok=True)

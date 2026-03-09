@@ -16,6 +16,7 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
   const [sourceLang, setSourceLang] = useState('')
   const [targetLang, setTargetLang] = useState('')
   const [customInstructions, setCustomInstructions] = useState('')
+  const [workflowMode, setWorkflowMode] = useState<'classic' | 'glossary_review'>('classic')
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -76,6 +77,7 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
         source_language: sourceLang,
         target_language: targetLang,
         custom_instructions: customInstructions || undefined,
+        workflow_mode: workflowMode,
       })
       setFile(null)
       setCustomInstructions('')
@@ -171,6 +173,16 @@ export function UploadForm({ onJobCreated }: UploadFormProps) {
           >
             <SettingsIcon size={14} />
           </Button>
+
+          <Select value={workflowMode} onValueChange={v => setWorkflowMode(v as 'classic' | 'glossary_review')}>
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="classic" className="text-xs">기본 번역</SelectItem>
+              <SelectItem value="glossary_review" className="text-xs">용어 검토 후 번역</SelectItem>
+            </SelectContent>
+          </Select>
 
           <Button
             size="sm"

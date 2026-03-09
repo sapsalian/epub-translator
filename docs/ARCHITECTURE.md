@@ -15,6 +15,12 @@ EPUB translation is a four-stage pipeline with checkpointing:
 4. Insertion (CPU)
    - Restore tags and write translated EPUB
 
+## Workflow Modes
+- `classic`: runs extraction -> preprocess -> translation -> insertion in one pass.
+- `glossary_review`: runs extraction -> preprocess, then pauses in `awaiting_review`.
+  - User edits glossary in review UI.
+  - `POST /api/jobs/{id}/continue` resumes the same job for translation/insertion.
+
 ## Data Flow
 ```
 EPUB -> ExtractionResult -> PreprocessResult -> TranslationResult -> InsertionResult
@@ -35,6 +41,8 @@ EPUB -> ExtractionResult -> PreprocessResult -> TranslationResult -> InsertionRe
 ## Checkpointing
 - Stored in `checkpoints/` by default via `FilePersistenceBackend`.
 - Resume point determined by `CheckpointManager.get_resume_point`.
+- Additional glossary edit checkpoint key:
+  - `{epub_id}:glossary_edit:{lang}` for user-edited term mappings.
 
 ## Parsing/Placeholders
 - Inner tags use placeholders: `{{n}}`, `{{/n}}`, `{{n/}}`.

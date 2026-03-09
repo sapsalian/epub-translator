@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
             output_dir=config.output_dir,
             checkpoint_dir=config.checkpoint_dir,
             upload_dir=config.upload_dir,
+            workspace_dir=config.workspace_dir,
         )
     )
     yield

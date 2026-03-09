@@ -7,6 +7,7 @@ class TestJobState:
     def test_enum_values(self):
         assert JobState.QUEUED.value == "queued"
         assert JobState.PROCESSING.value == "processing"
+        assert JobState.AWAITING_REVIEW.value == "awaiting_review"
         assert JobState.DONE.value == "done"
         assert JobState.FAILED.value == "failed"
 
@@ -34,6 +35,8 @@ class TestJobInfo:
         assert restored.source_language == job.source_language
         assert restored.target_language == job.target_language
         assert restored.custom_instructions == job.custom_instructions
+        assert restored.workflow_mode == job.workflow_mode
+        assert restored.workflow_options == job.workflow_options
         assert restored.state == job.state
         assert restored.created_at == job.created_at
 
@@ -45,6 +48,17 @@ class TestJobInfo:
         minimal = {"job_id": "j1", "filename": "b.epub", "upload_id": "u1"}
         job = JobInfo.from_dict(minimal)
         assert job.state == JobState.QUEUED
+        assert job.workflow_mode == "classic"
+        assert job.workflow_options == {}
         assert job.progress == 0.0
         assert job.error == ""
         assert job.download_token is None
+
+    def test_to_dict_includes_workflow_fields(self):
+        job = self._make_job(
+            workflow_mode="glossary_review",
+            workflow_options={"review_required": True},
+        )
+        data = job.to_dict()
+        assert data["workflow_mode"] == "glossary_review"
+        assert data["workflow_options"] == {"review_required": True}

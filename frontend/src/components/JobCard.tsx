@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 declare global {
   interface Window {
@@ -46,6 +47,11 @@ const stageLabel: Record<string, string> = {
   PREPROCESSING: '사전 처리 중',
   TRANSLATING: '번역 중',
   INSERTING: '파일 생성 중',
+  extracting: '파일 분석 중',
+  preprocessing: '사전 처리 중',
+  translating: '번역 중',
+  inserting: '파일 생성 중',
+  awaiting_review: '용어집 검토 대기',
   done: '완료',
 }
 
@@ -120,6 +126,11 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
 
         {/* Hover actions */}
         <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
+          {job.state === 'awaiting_review' && (
+            <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+              <Link to={`/jobs/${job.job_id}/review/glossary`}>검토</Link>
+            </Button>
+          )}
           {job.state === 'done' && job.download_token && (
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDownload}>
               <Download size={13} />
