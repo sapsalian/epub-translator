@@ -80,6 +80,7 @@ src/
 ├── epub_walker/          # EPUB 파싱
 │   ├── parser.py         # get_spine_xhtml_paths_by_order(zf) -> list[PurePosixPath]
 │   ├── reader.py         # get_chapter_titles(), extract_chapter_paragraphs(), render_chapter_html()
+│   ├── writer.py         # patch_epub_paragraphs() (paragraph inner HTML 패치 + EPUB 재패키징)
 │   └── base.py           # XhtmlProcessor, FileProcessor ABCs
 ├── matchers/             # 요소 매칭
 │   ├── base.py           # ElementMatcher ABC (match, reset)
