@@ -42,6 +42,10 @@
   - `src/epub_walker/reader.py`
 - Frontend 결과 리뷰 경로 추가:
   - `#/jobs/:id/review/result`
+- 결과 뷰어 개선 Phase 3b:
+  - `GET /api/jobs/{id}/chapters/{chapter_id}` 응답에 `source_html`, `translation_html` 추가
+  - DONE job 원문 EPUB을 `~/.epub-translator/source_epubs/{job_id}.epub`에 영구 저장
+  - startup 시 기존 DONE job 대상 `source_epub_path` 마이그레이션 수행
 
 ## Python Environment
 
@@ -71,7 +75,7 @@ main.py                   # 데스크탑 앱 진입점 (python main.py)
 src/
 ├── epub_walker/          # EPUB 파싱
 │   ├── parser.py         # get_spine_xhtml_paths_by_order(zf) -> list[PurePosixPath]
-│   ├── reader.py         # get_chapter_titles(), extract_chapter_paragraphs() for result viewer
+│   ├── reader.py         # get_chapter_titles(), extract_chapter_paragraphs(), render_chapter_html()
 │   └── base.py           # XhtmlProcessor, FileProcessor ABCs
 ├── matchers/             # 요소 매칭
 │   ├── base.py           # ElementMatcher ABC (match, reset)
@@ -103,12 +107,12 @@ src/
 │       ├── file_backend.py # FilePersistenceBackend (JSON 파일 기반)
 │       └── manager.py    # CheckpointManager (고수준 API)
 ├── app/                  # FastAPI 백엔드 API 서버
-│   ├── main.py           # FastAPI 앱 인스턴스, 라우터 등록, 정적 파일 서빙
-│   ├── config.py         # 서버 설정 (환경변수 로딩)
+│   ├── main.py           # FastAPI 앱 인스턴스, 라우터 등록, 정적 파일 서빙, source_epub 마이그레이션
+│   ├── config.py         # 서버 설정 (환경변수 로딩, source_epub_dir 포함)
 │   ├── jobs/
-│   │   ├── models.py     # JobState(queued|processing|awaiting_review|done|failed), JobInfo dataclass
+│   │   ├── models.py     # JobState(...), JobInfo dataclass (source_epub_path 포함)
 │   │   ├── manager.py    # JobManager (asyncio.Queue + 다운로드 토큰)
-│   │   └── worker.py     # 백그라운드 번역 워커 (순차 처리, glossary_review 워크플로우 지원)
+│   │   └── worker.py     # 백그라운드 번역 워커 (DONE 시 source_epub 영구 복사)
 │   ├── routes/
 │   │   ├── health.py     # GET /api/health 헬스체크
 │   │   ├── upload.py     # POST /api/upload EPUB 업로드
@@ -116,6 +120,7 @@ src/
 │   │   │                 # GET /api/jobs/stream (SSE), POST /api/jobs/{id}/retry,
 │   │   │                 # GET|PUT /api/jobs/{id}/glossary, POST /api/jobs/{id}/continue,
 │   │   │                 # GET /api/jobs/{id}/chapters, GET /api/jobs/{id}/chapters/{chapter_id}
+│   │   │                 # (paragraphs + source_html + translation_html)
 │   │   ├── download.py   # GET /download/{token} 번역 결과 다운로드
 │   │   ├── languages.py  # GET /api/languages 지원 언어 목록
 │   │   └── settings.py   # GET/PUT /api/settings 설정 조회/변경

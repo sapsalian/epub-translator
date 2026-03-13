@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, Eye, Languages } from 'lucide-react'
 import { toast } from 'sonner'
@@ -20,14 +20,84 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-type ReaderPane = 'source' | 'translation'
+interface IframePanelProps {
+  html: string
+  hidden: boolean
+  iframeRef: React.RefObject<HTMLIFrameElement | null>
+}
 
-function ParagraphHtml({ html, emptyMessage }: { html: string; emptyMessage?: string }) {
-  if (!html) {
-    return <p className="text-sm leading-7 text-muted-foreground">{emptyMessage ?? ''}</p>
+function IframePanel({ html, hidden, iframeRef }: IframePanelProps) {
+  const [height, setHeight] = useState(0)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+
+  const updateHeight = () => {
+    const doc = iframeRef.current?.contentWindow?.document
+    if (!doc?.body) return
+    setHeight(doc.body.scrollHeight)
   }
 
-  return <div className="text-sm leading-7 [&_a]:text-primary [&_a]:underline [&_li]:ml-5 [&_ol]:ml-5 [&_ol]:list-decimal [&_p]:mb-0 [&_strong]:font-semibold [&_ul]:ml-5 [&_ul]:list-disc" dangerouslySetInnerHTML={{ __html: html }} />
+  const handleLoad = () => {
+    resizeObserverRef.current?.disconnect()
+    resizeObserverRef.current = null
+
+    const doc = iframeRef.current?.contentWindow?.document
+    if (!doc?.body) return
+
+    const observer = new ResizeObserver(() => {
+      updateHeight()
+    })
+    observer.observe(doc.body)
+    resizeObserverRef.current = observer
+    updateHeight()
+  }
+
+  useEffect(() => {
+    return () => {
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
+    }
+  }, [])
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={html}
+      onLoad={handleLoad}
+      sandbox="allow-same-origin"
+      style={{
+        width: '100%',
+        border: 'none',
+        display: hidden ? 'none' : 'block',
+        height: `${Math.max(height, 480)}px`,
+        background: 'white',
+      }}
+      title={hidden ? 'source-hidden' : 'viewer-visible'}
+    />
+  )
+}
+
+function getTopmostParagraphId(iframe: HTMLIFrameElement | null): string | null {
+  const doc = iframe?.contentWindow?.document
+  if (!doc) return null
+
+  const elements = doc.querySelectorAll<HTMLElement>('[data-paragraph-id]')
+  for (const element of elements) {
+    const rect = element.getBoundingClientRect()
+    if (rect.bottom > 24) {
+      return element.dataset.paragraphId ?? null
+    }
+  }
+  return null
+}
+
+function scrollToParagraph(iframe: HTMLIFrameElement | null, paragraphId: string | null): void {
+  if (!iframe || !paragraphId) return
+  const doc = iframe.contentWindow?.document
+  if (!doc) return
+
+  doc
+    .querySelector<HTMLElement>(`[data-paragraph-id="${paragraphId}"]`)
+    ?.scrollIntoView({ block: 'start', behavior: 'auto' })
 }
 
 export function ResultReviewPage() {
@@ -41,7 +111,10 @@ export function ResultReviewPage() {
   const [loading, setLoading] = useState(true)
   const [chapterLoading, setChapterLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [activePane, setActivePane] = useState<ReaderPane>('translation')
+  const [showSource, setShowSource] = useState(false)
+
+  const translationRef = useRef<HTMLIFrameElement>(null)
+  const sourceRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     if (!jobId) return
@@ -63,8 +136,7 @@ export function ResultReviewPage() {
         setChapters(chapterList)
         setSelectedChapterId(current => current || chapterList[0]?.chapter_id || '')
       } catch (err) {
-        const message = extractErrorMessage(err)
-        setError(message)
+        setError(extractErrorMessage(err))
       } finally {
         setLoading(false)
       }
@@ -93,11 +165,32 @@ export function ResultReviewPage() {
     loadChapter()
   }, [jobId, selectedChapterId])
 
+  const sourceAvailable = chapterContent?.source_html != null
+
+  useEffect(() => {
+    if (!sourceAvailable && showSource) {
+      setShowSource(false)
+    }
+  }, [showSource, sourceAvailable])
+
+  const handleToggleSource = () => {
+    if (!sourceAvailable) return
+
+    const fromRef = showSource ? sourceRef : translationRef
+    const toRef = showSource ? translationRef : sourceRef
+    const topParagraphId = getTopmostParagraphId(fromRef.current)
+
+    setShowSource(prev => !prev)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollToParagraph(toRef.current, topParagraphId)
+      })
+    })
+  }
+
   if (loading) {
     return <p className="p-6 text-center text-sm text-muted-foreground">뷰어를 불러오는 중...</p>
   }
-
-  const sourceMissing = !!chapterContent && chapterContent.paragraphs.every(paragraph => paragraph.source === '')
 
   return (
     <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 p-4 md:p-6">
@@ -112,11 +205,11 @@ export function ResultReviewPage() {
             </Button>
             <h1 className="text-lg font-semibold">{job?.filename}</h1>
             <p className="text-sm text-muted-foreground">
-              챕터를 선택해 원문과 번역본을 나란히 확인할 수 있습니다.
+              EPUB 원본 스타일 그대로 확인할 수 있습니다.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Eye className="size-4 text-muted-foreground" />
             <Select value={selectedChapterId} onValueChange={setSelectedChapterId}>
               <SelectTrigger className="w-full min-w-64 bg-background md:w-80">
@@ -130,24 +223,16 @@ export function ResultReviewPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              type="button"
+              variant={showSource ? 'default' : 'outline'}
+              onClick={handleToggleSource}
+              disabled={!sourceAvailable || chapterLoading}
+            >
+              <Languages className="size-4" />
+              {showSource ? '번역 보기' : '원문 보기'}
+            </Button>
           </div>
-        </div>
-
-        <div className="flex gap-2 md:hidden">
-          <Button
-            variant={activePane === 'source' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActivePane('source')}
-          >
-            원문
-          </Button>
-          <Button
-            variant={activePane === 'translation' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setActivePane('translation')}
-          >
-            번역
-          </Button>
         </div>
       </div>
 
@@ -157,52 +242,28 @@ export function ResultReviewPage() {
         </Alert>
       )}
 
+      {!sourceAvailable && !chapterLoading && (
+        <Alert>
+          <AlertDescription>원문 파일을 찾을 수 없습니다.</AlertDescription>
+        </Alert>
+      )}
+
       {chapterLoading || !chapterContent ? (
         <div className="rounded-2xl border bg-card p-8 text-center text-sm text-muted-foreground">
           챕터를 불러오는 중...
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-2">
-          <section className={activePane === 'source' ? 'block' : 'hidden md:block'}>
-            <div className="flex h-full flex-col overflow-hidden rounded-2xl border bg-card">
-              <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-3">
-                <Languages className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold">원문</h2>
-              </div>
-              <div className="flex-1 overflow-auto px-4 py-4">
-                {sourceMissing && (
-                  <Alert className="mb-4">
-                    <AlertDescription>원문 파일을 찾을 수 없습니다.</AlertDescription>
-                  </Alert>
-                )}
-                <div className="space-y-4">
-                  {chapterContent.paragraphs.map(paragraph => (
-                    <div key={paragraph.id} className="rounded-xl border border-transparent bg-background px-4 py-3">
-                      <ParagraphHtml html={paragraph.source} emptyMessage={sourceMissing ? '' : '비어 있는 문단입니다.'} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className={activePane === 'translation' ? 'block' : 'hidden md:block'}>
-            <div className="flex h-full flex-col overflow-hidden rounded-2xl border bg-card">
-              <div className="flex items-center gap-2 border-b bg-primary/5 px-4 py-3">
-                <Eye className="size-4 text-primary" />
-                <h2 className="text-sm font-semibold">번역</h2>
-              </div>
-              <div className="flex-1 overflow-auto px-4 py-4">
-                <div className="space-y-4">
-                  {chapterContent.paragraphs.map(paragraph => (
-                    <div key={paragraph.id} className="rounded-xl border border-primary/10 bg-primary/5 px-4 py-3">
-                      <ParagraphHtml html={paragraph.translation} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
+        <div className="rounded-2xl border bg-card p-2 shadow-xs">
+          <IframePanel
+            html={chapterContent.translation_html}
+            hidden={showSource}
+            iframeRef={translationRef}
+          />
+          <IframePanel
+            html={chapterContent.source_html ?? '<!doctype html><html><body></body></html>'}
+            hidden={!showSource}
+            iframeRef={sourceRef}
+          />
         </div>
       )}
     </div>

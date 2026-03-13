@@ -53,6 +53,8 @@ export interface JobChapterContent {
   chapter_id: string
   title: string
   paragraphs: ChapterParagraph[]
+  translation_html: string
+  source_html: string | null
 }
 
 export interface LanguageOption {
