@@ -78,6 +78,7 @@ def render_chapter_html(zf: ZipFile, chapter_idx: int, chapter_id: str) -> str:
         link.getparent().replace(link, style)
 
     _inline_image_assets(root, zf, chapter_path)
+    _inject_runtime_style_guard(root)
 
     for index, element in enumerate(_iter_block_elements(root)):
         element.set("data-paragraph-id", f"{chapter_id}_p{index}")
@@ -211,3 +212,40 @@ def _load_data_uri(zf: ZipFile, chapter_path: PurePosixPath, href: str) -> str |
     media_type = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
     encoded = base64.b64encode(payload).decode("ascii")
     return f"data:{media_type};base64,{encoded}"
+
+
+def _inject_runtime_style_guard(root: etree._Element) -> None:
+    runtime_css = """
+html, body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+}
+
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+table, pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+""".strip()
+
+    head = root.xpath(".//*[local-name()='head']")
+    if head:
+        head_elem = head[0]
+    else:
+        ns = etree.QName(root).namespace
+        head_tag = f"{{{ns}}}head" if ns else "head"
+        head_elem = etree.Element(head_tag)
+        root.insert(0, head_elem)
+
+    ns = etree.QName(head_elem).namespace
+    style_tag = f"{{{ns}}}style" if ns else "style"
+    runtime_style = etree.Element(style_tag)
+    runtime_style.text = runtime_css
+    runtime_style.set("data-viewer-runtime", "1")
+    head_elem.append(runtime_style)

@@ -60,6 +60,10 @@ class TestRenderChapterHtml:
         assert "<style" in html
         assert 'data-paragraph-id="ch002_p0"' in html
         assert 'data-paragraph-id="ch002_p1"' in html
+        assert "overscroll-behavior-x: none" in html
+        assert "touch-action: pan-y" in html
+        assert "table, pre" in html
+        assert "overflow-x: auto" in html
 
     def test_inlines_svg_image_href(self, tmp_path):
         epub_path = tmp_path / "image-inline.epub"
