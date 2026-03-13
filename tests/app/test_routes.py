@@ -1,6 +1,7 @@
 """Integration tests for API routes."""
 
 import io
+from pathlib import Path
 
 import pytest
 
@@ -85,6 +86,22 @@ class TestUploadRoute:
 
 
 class TestJobsRoute:
+    def _mark_job_done(
+        self,
+        test_app,
+        job_id: str,
+        *,
+        input_path: Path | None = Path("demo_files/sample.epub"),
+        output_path: Path = Path("demo_files/translated.epub"),
+    ):
+        manager = test_app.state.job_manager
+        job = manager.get_job(job_id)
+        assert job is not None
+        job.state = JobState.DONE
+        job.input_path = str(input_path) if input_path is not None else None
+        job.output_path = str(output_path)
+        manager.save()
+
     async def _upload_epub(self, client):
         content = b"PK\x03\x04fake epub"
         files = {"file": ("book.epub", io.BytesIO(content), "application/epub+zip")}
@@ -271,6 +288,77 @@ class TestJobsRoute:
         assert updated is not None
         assert updated.state.value == "queued"
         assert updated.workflow_options.get("review_approved") is True
+
+    @pytest.mark.asyncio
+    async def test_get_job_chapters(self, client, test_app):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+        })
+        job_id = create_resp.json()["job_id"]
+        self._mark_job_done(test_app, job_id)
+
+        resp = await client.get(f"/api/jobs/{job_id}/chapters")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data[0] == {"chapter_id": "ch000", "title": "Preface"}
+        assert data[2]["title"] == "Chapter 1: The Beginning of the End"
+
+    @pytest.mark.asyncio
+    async def test_get_job_chapter_content(self, client, test_app):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+        })
+        job_id = create_resp.json()["job_id"]
+        self._mark_job_done(test_app, job_id)
+
+        resp = await client.get(f"/api/jobs/{job_id}/chapters/ch002")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["chapter_id"] == "ch002"
+        assert data["title"] == "Chapter 1: The Beginning of the End"
+        assert data["paragraphs"][0]["id"] == "ch002_p0"
+        assert data["paragraphs"][0]["source"].startswith("Chapter 1: The Beginning of the End")
+        assert data["paragraphs"][0]["translation"].startswith("[Translated: Chapter 1: The Beginning of the End]")
+
+    @pytest.mark.asyncio
+    async def test_get_job_chapter_content_without_source_epub(self, client, test_app):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+        })
+        job_id = create_resp.json()["job_id"]
+        self._mark_job_done(test_app, job_id, input_path=None)
+
+        resp = await client.get(f"/api/jobs/{job_id}/chapters/ch000")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["paragraphs"]
+        assert all(paragraph["source"] == "" for paragraph in data["paragraphs"])
+
+    @pytest.mark.asyncio
+    async def test_get_job_chapters_rejects_non_done_job(self, client):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+        })
+        job_id = create_resp.json()["job_id"]
+
+        resp = await client.get(f"/api/jobs/{job_id}/chapters")
+
+        assert resp.status_code == 409
 
 
 class TestDownloadRoute:

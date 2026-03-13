@@ -3,12 +3,15 @@
 import asyncio
 import json
 import uuid
+from pathlib import Path
 from typing import Any
+from zipfile import ZipFile
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from src.epub_walker.reader import extract_chapter_paragraphs, get_chapter_titles
 from src.pipeline.persistence import CheckpointManager, FilePersistenceBackend
 
 from ..jobs.models import JobInfo
@@ -40,6 +43,25 @@ async def _get_checkpoint_manager(request: Request, job_id: str) -> CheckpointMa
     backend = FilePersistenceBackend(str(checkpoint_path))
     await backend.initialize()
     return CheckpointManager(backend)
+
+
+def _get_job_or_error(request: Request, job_id: str) -> JobInfo | JSONResponse:
+    manager = request.app.state.job_manager
+    job = manager.get_job(job_id)
+    if job is None:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    return job
+
+
+def _get_done_job_or_error(request: Request, job_id: str) -> JobInfo | JSONResponse:
+    job = _get_job_or_error(request, job_id)
+    if isinstance(job, JSONResponse):
+        return job
+    if job.state != JobState.DONE:
+        return JSONResponse({"error": "Job is not done yet"}, status_code=409)
+    if not job.output_path:
+        return JSONResponse({"error": "Output EPUB is not available"}, status_code=409)
+    return job
 
 
 @router.post("/jobs")
@@ -109,13 +131,60 @@ async def stream_jobs(request: Request):
 @router.get("/jobs/{job_id}")
 async def get_job(request: Request, job_id: str):
     manager = request.app.state.job_manager
-    job = manager.get_job(job_id)
-    if job is None:
-        return JSONResponse({"error": "Job not found"}, status_code=404)
+    job = _get_job_or_error(request, job_id)
+    if isinstance(job, JSONResponse):
+        return job
 
     result = job.to_dict()
     result["queue_position"] = manager.get_queue_position(job_id)
     return result
+
+
+@router.get("/jobs/{job_id}/chapters")
+async def get_job_chapters(request: Request, job_id: str):
+    job = _get_done_job_or_error(request, job_id)
+    if isinstance(job, JSONResponse):
+        return job
+
+    output_path = Path(job.output_path)
+    with ZipFile(output_path) as translation_zf:
+        titles = get_chapter_titles(translation_zf)
+
+    return [
+        {"chapter_id": f"ch{index:03d}", "title": title}
+        for index, title in enumerate(titles)
+    ]
+
+
+@router.get("/jobs/{job_id}/chapters/{chapter_id}")
+async def get_job_chapter_content(request: Request, job_id: str, chapter_id: str):
+    job = _get_done_job_or_error(request, job_id)
+    if isinstance(job, JSONResponse):
+        return job
+    if not chapter_id.startswith("ch") or not chapter_id[2:].isdigit():
+        return JSONResponse({"error": "Invalid chapter id"}, status_code=400)
+
+    chapter_idx = int(chapter_id[2:])
+    output_path = Path(job.output_path)
+    source_path = Path(job.input_path) if job.input_path else None
+    source_exists = source_path is not None and source_path.exists()
+
+    with ZipFile(output_path) as translation_zf:
+        titles = get_chapter_titles(translation_zf)
+        if chapter_idx < 0 or chapter_idx >= len(titles):
+            return JSONResponse({"error": "Chapter not found"}, status_code=404)
+
+        if source_exists:
+            with ZipFile(source_path) as source_zf:
+                paragraphs = extract_chapter_paragraphs(source_zf, translation_zf, chapter_idx, chapter_id)
+        else:
+            paragraphs = extract_chapter_paragraphs(None, translation_zf, chapter_idx, chapter_id)
+
+    return {
+        "chapter_id": chapter_id,
+        "title": titles[chapter_idx],
+        "paragraphs": paragraphs,
+    }
 
 
 @router.post("/jobs/{job_id}/retry")
