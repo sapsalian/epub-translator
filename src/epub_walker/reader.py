@@ -23,7 +23,7 @@ def get_chapter_titles(zf: ZipFile) -> list[str]:
     if not title_map:
         title_map = _load_ncx_title_map(zf)
 
-    return [title_map.get(path, path.stem) for path in spine_paths]
+    return [title_map.get(path, _fallback_title_from_path(path)) for path in spine_paths]
 
 
 def extract_chapter_paragraphs(
@@ -249,3 +249,16 @@ table, pre {
     runtime_style.text = runtime_css
     runtime_style.set("data-viewer-runtime", "1")
     head_elem.append(runtime_style)
+
+
+def _fallback_title_from_path(path: PurePosixPath) -> str:
+    title = path.name
+    while True:
+        base, ext = posixpath.splitext(title)
+        if not base:
+            break
+        if ext.lower() in {".xhtml", ".html", ".htm"}:
+            title = base
+            continue
+        break
+    return title

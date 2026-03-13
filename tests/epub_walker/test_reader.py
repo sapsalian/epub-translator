@@ -19,6 +19,41 @@ class TestGetChapterTitles:
         assert titles[2] == "Chapter 1: The Beginning of the End"
         assert titles[-1] == "Afterword"
 
+    def test_fallback_strips_multi_html_extensions(self, tmp_path):
+        epub_path = tmp_path / "multi-ext.epub"
+        with ZipFile(epub_path, "w") as zf:
+            zf.writestr(
+                "META-INF/container.xml",
+                """<?xml version="1.0" encoding="utf-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>""",
+            )
+            zf.writestr(
+                "OEBPS/content.opf",
+                """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <manifest>
+    <item id="c1" href="chapter-01.htm.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="c1"/>
+  </spine>
+</package>""",
+            )
+            zf.writestr(
+                "OEBPS/chapter-01.htm.xhtml",
+                """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><p>hello</p></body></html>""",
+            )
+
+        with ZipFile(epub_path) as zf:
+            titles = get_chapter_titles(zf)
+
+        assert titles == ["chapter-01"]
+
 
 class TestExtractChapterParagraphs:
     def test_extracts_source_and_translation_html_for_supported_tags(self):

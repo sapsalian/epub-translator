@@ -136,6 +136,7 @@ export function ResultReviewPage() {
 
   const sourceAvailable = chapterContent?.source_html != null
   const sourceMissing = !sourceAvailable && !chapterLoading && !!chapterContent
+  const chapterNumberWidth = Math.max(2, String(chapters.length || 1).length)
 
   useEffect(() => {
     if (!sourceAvailable && showSource) {
@@ -157,6 +158,9 @@ export function ResultReviewPage() {
       })
     })
   }
+
+  const formatChapterLabel = (chapter: JobChapter, index: number): string =>
+    `${String(index + 1).padStart(chapterNumberWidth, '0')}. ${chapter.title}`
 
   if (loading) {
     return <p className="p-6 text-center text-sm text-muted-foreground">뷰어를 불러오는 중...</p>
@@ -194,10 +198,10 @@ export function ResultReviewPage() {
             <SelectTrigger size="sm" className="w-full min-w-0 bg-background text-xs md:text-sm">
               <SelectValue placeholder="챕터 선택" />
             </SelectTrigger>
-            <SelectContent>
-              {chapters.map(chapter => (
+              <SelectContent>
+              {chapters.map((chapter, index) => (
                 <SelectItem key={chapter.chapter_id} value={chapter.chapter_id}>
-                  {chapter.title}
+                  {formatChapterLabel(chapter, index)}
                 </SelectItem>
               ))}
             </SelectContent>
