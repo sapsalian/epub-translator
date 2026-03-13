@@ -50,6 +50,10 @@
   - 페이지 고정 + iframe 단일 스크롤 구조로 변경 (모바일/데스크탑 통일)
   - 모바일 compact sticky 뷰어 컨트롤(챕터 선택 + 원문/번역 토글)
   - `render_chapter_html()` runtime style guard 주입 (`touch-action: pan-y`, `overscroll-behavior-x`, `table/pre` 예외 가로 스크롤)
+- 결과 뷰어 인라인 편집 Phase 4:
+  - `PUT /api/jobs/{id}/content` 추가 (`{edits:[{id, translation}]}` 저장)
+  - `src/epub_walker/writer.py` 추가 (`patch_epub_paragraphs`)
+  - `ResultReviewPage`에서 translation iframe 내부 contenteditable 편집, 스타일 팔레트, 저장 버튼, 이탈 경고 지원
 
 ## Python Environment
 
@@ -124,7 +128,8 @@ src/
 │   │   ├── jobs.py       # POST|GET /api/jobs, GET|DELETE /api/jobs/{id},
 │   │   │                 # GET /api/jobs/stream (SSE), POST /api/jobs/{id}/retry,
 │   │   │                 # GET|PUT /api/jobs/{id}/glossary, POST /api/jobs/{id}/continue,
-│   │   │                 # GET /api/jobs/{id}/chapters, GET /api/jobs/{id}/chapters/{chapter_id}
+│   │   │                 # GET /api/jobs/{id}/chapters, GET /api/jobs/{id}/chapters/{chapter_id},
+│   │   │                 # PUT /api/jobs/{id}/content (paragraph 편집 저장)
 │   │   │                 # (paragraphs + source_html + translation_html)
 │   │   ├── download.py   # GET /download/{token} 번역 결과 다운로드
 │   │   ├── languages.py  # GET /api/languages 지원 언어 목록
@@ -155,7 +160,7 @@ frontend/                 # React + TypeScript + Vite 프론트엔드
 │       ├── MainPage.tsx           # 메인 페이지 (업로드 + 작업 목록)
 │       ├── SettingsPage.tsx       # 설정 페이지
 │       ├── GlossaryReviewPage.tsx # 용어집 검토 페이지 (#/jobs/:id/review/glossary)
-│       └── ResultReviewPage.tsx   # 결과 뷰어 페이지 (#/jobs/:id/review/result)
+│       └── ResultReviewPage.tsx   # 결과 뷰어/인라인 편집 페이지 (#/jobs/:id/review/result)
 ```
 
 ## Key APIs

@@ -1,10 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Languages } from 'lucide-react'
+import { ChevronLeft, Languages, Save } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
   apiClient,
+  type ContentEdit,
   extractErrorMessage,
   type JobChapter,
   type JobChapterContent,
@@ -23,16 +32,47 @@ import {
 interface IframePanelProps {
   html: string
   hidden: boolean
-  iframeRef: React.RefObject<HTMLIFrameElement | null>
+  iframeRef: RefObject<HTMLIFrameElement | null>
   title: string
+  onLoad?: () => void
 }
 
-function IframePanel({ html, hidden, iframeRef, title }: IframePanelProps) {
+interface StyleOption {
+  key: string
+  tag: string
+  styleText: string
+  previewStyle: CSSProperties
+}
+
+interface PaletteState {
+  top: number
+  left: number
+  paragraphId: string
+  options: StyleOption[]
+}
+
+const STYLE_WHITELIST = new Set([
+  'color',
+  'background-color',
+  'font-weight',
+  'font-style',
+  'text-decoration',
+  'font-family',
+])
+
+const DEFAULT_STYLE_OPTIONS: StyleOption[] = [
+  { key: 'default-strong', tag: 'strong', styleText: '', previewStyle: { fontWeight: 700 } },
+  { key: 'default-em', tag: 'em', styleText: '', previewStyle: { fontStyle: 'italic' } },
+  { key: 'default-u', tag: 'u', styleText: '', previewStyle: { textDecoration: 'underline' } },
+]
+
+function IframePanel({ html, hidden, iframeRef, title, onLoad }: IframePanelProps) {
   return (
     <iframe
       ref={iframeRef}
       srcDoc={html}
       sandbox="allow-same-origin"
+      onLoad={onLoad}
       style={{
         width: '100%',
         height: '100%',
@@ -43,6 +83,57 @@ function IframePanel({ html, hidden, iframeRef, title }: IframePanelProps) {
       title={title}
     />
   )
+}
+
+function normalizeEditableHtml(html: string): string {
+  return html
+    .replace(/<div><br><\/div>/gi, '<br/>')
+    .replace(/<\/div>\s*<div>/gi, '<br/>')
+    .replace(/<div>/gi, '')
+    .replace(/<\/div>/gi, '')
+    .replace(/<br\s*\/?>/gi, '<br/>')
+    .trim()
+}
+
+function findParagraphElement(node: Node | null): HTMLElement | null {
+  if (!node) return null
+  if (node instanceof HTMLElement && node.dataset.paragraphId) return node
+  const element = node instanceof HTMLElement ? node : node.parentElement
+  return element?.closest<HTMLElement>('[data-paragraph-id]') ?? null
+}
+
+function insertLineBreak(doc: Document): void {
+  const selection = doc.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+  const range = selection.getRangeAt(0)
+  range.deleteContents()
+  const br = doc.createElement('br')
+  range.insertNode(br)
+  range.setStartAfter(br)
+  range.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
+function insertPlainText(doc: Document, text: string): void {
+  const selection = doc.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+  const range = selection.getRangeAt(0)
+  range.deleteContents()
+
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const fragment = doc.createDocumentFragment()
+  lines.forEach((line, index) => {
+    if (index > 0) {
+      fragment.appendChild(doc.createElement('br'))
+    }
+    fragment.appendChild(doc.createTextNode(line))
+  })
+
+  range.insertNode(fragment)
+  range.collapse(false)
+  selection.removeAllRanges()
+  selection.addRange(range)
 }
 
 function getTopmostParagraphId(iframe: HTMLIFrameElement | null): string | null {
@@ -69,6 +160,103 @@ function scrollToParagraph(iframe: HTMLIFrameElement | null, paragraphId: string
     ?.scrollIntoView({ block: 'start', behavior: 'auto' })
 }
 
+function filterAllowedStyle(styleText: string): string {
+  const declarations = styleText
+    .split(';')
+    .map(declaration => declaration.trim())
+    .filter(Boolean)
+    .map(declaration => {
+      const splitIndex = declaration.indexOf(':')
+      if (splitIndex <= 0) return null
+      const property = declaration.slice(0, splitIndex).trim().toLowerCase()
+      const value = declaration.slice(splitIndex + 1).trim()
+      if (!STYLE_WHITELIST.has(property) || value.length === 0) return null
+      return `${property}: ${value}`
+    })
+    .filter((declaration): declaration is string => declaration !== null)
+
+  return Array.from(new Set(declarations)).join('; ')
+}
+
+function styleTextToObject(styleText: string): CSSProperties {
+  const styleObject: Record<string, string> = {}
+  styleText.split(';').forEach(declaration => {
+    const splitIndex = declaration.indexOf(':')
+    if (splitIndex <= 0) return
+    const property = declaration.slice(0, splitIndex).trim()
+    const value = declaration.slice(splitIndex + 1).trim()
+    if (!property || !value) return
+    const camelKey = property.replace(/-([a-z])/g, (_, char: string) => char.toUpperCase())
+    styleObject[camelKey] = value
+  })
+  return styleObject as CSSProperties
+}
+
+function normalizeInlineTag(tagName: string): string {
+  if (tagName === 'b') return 'strong'
+  if (tagName === 'i') return 'em'
+  return tagName
+}
+
+function extractStyleOptions(paragraph: HTMLElement): StyleOption[] {
+  const options: StyleOption[] = [...DEFAULT_STYLE_OPTIONS]
+  const signatures = new Set(DEFAULT_STYLE_OPTIONS.map(option => `${option.tag}|${option.styleText}`))
+
+  const inlineElements = paragraph.querySelectorAll<HTMLElement>('strong, b, em, i, u, span')
+  for (const element of inlineElements) {
+    const tag = normalizeInlineTag(element.tagName.toLowerCase())
+    const styleText = filterAllowedStyle(element.getAttribute('style') ?? '')
+    if (tag === 'span' && !styleText) continue
+
+    const signature = `${tag}|${styleText}`
+    if (signatures.has(signature)) continue
+    signatures.add(signature)
+
+    const previewStyle: CSSProperties = {}
+    if (tag === 'strong') previewStyle.fontWeight = 700
+    if (tag === 'em') previewStyle.fontStyle = 'italic'
+    if (tag === 'u') previewStyle.textDecoration = 'underline'
+    Object.assign(previewStyle, styleTextToObject(styleText))
+
+    options.push({
+      key: `inline-${options.length}`,
+      tag,
+      styleText,
+      previewStyle,
+    })
+
+    if (options.length >= 10) break
+  }
+
+  return options
+}
+
+function hasSelectionInsideParagraph(doc: Document, paragraphId: string): boolean {
+  const selection = doc.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false
+  const paragraph = findParagraphElement(selection.getRangeAt(0).commonAncestorContainer)
+  return paragraph?.dataset.paragraphId === paragraphId
+}
+
+function applyInlineStyle(doc: Document, option: StyleOption): boolean {
+  const selection = doc.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false
+
+  const range = selection.getRangeAt(0)
+  const wrapper = doc.createElement(option.tag)
+  if (option.styleText) wrapper.setAttribute('style', option.styleText)
+
+  try {
+    range.surroundContents(wrapper)
+  } catch {
+    const fragment = range.extractContents()
+    wrapper.appendChild(fragment)
+    range.insertNode(wrapper)
+  }
+
+  return true
+}
+
 export function ResultReviewPage() {
   const { id: jobId } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -81,9 +269,18 @@ export function ResultReviewPage() {
   const [chapterLoading, setChapterLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSource, setShowSource] = useState(false)
+  const [baseTranslations, setBaseTranslations] = useState<Record<string, string>>({})
+  const [draftTranslations, setDraftTranslations] = useState<Record<string, string>>({})
+  const [activeParagraphId, setActiveParagraphId] = useState<string | null>(null)
+  const [palette, setPalette] = useState<PaletteState | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const translationRef = useRef<HTMLIFrameElement>(null)
   const sourceRef = useRef<HTMLIFrameElement>(null)
+  const cleanupRef = useRef<(() => void) | null>(null)
+  const showSourceRef = useRef(false)
+  const baseTranslationsRef = useRef<Record<string, string>>({})
+  const saveRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
     if (!jobId) return
@@ -114,6 +311,18 @@ export function ResultReviewPage() {
     load()
   }, [jobId, navigate])
 
+  const pendingEdits = useMemo<ContentEdit[]>(() => {
+    const edits: ContentEdit[] = []
+    for (const [id, translation] of Object.entries(draftTranslations)) {
+      if (translation !== (baseTranslations[id] ?? '')) {
+        edits.push({ id, translation })
+      }
+    }
+    return edits
+  }, [baseTranslations, draftTranslations])
+
+  const hasUnsavedChanges = pendingEdits.length > 0
+
   useEffect(() => {
     if (!jobId || !selectedChapterId) return
 
@@ -134,6 +343,58 @@ export function ResultReviewPage() {
     loadChapter()
   }, [jobId, selectedChapterId])
 
+  useEffect(() => {
+    if (!chapterContent) return
+    const nextBase: Record<string, string> = {}
+    chapterContent.paragraphs.forEach(paragraph => {
+      nextBase[paragraph.id] = normalizeEditableHtml(paragraph.translation)
+    })
+    setBaseTranslations(nextBase)
+    setDraftTranslations({})
+    setActiveParagraphId(null)
+    setPalette(null)
+  }, [chapterContent?.chapter_id])
+
+  useEffect(() => {
+    showSourceRef.current = showSource
+    if (showSource) setPalette(null)
+  }, [showSource])
+
+  useEffect(() => {
+    baseTranslationsRef.current = baseTranslations
+  }, [baseTranslations])
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
+
+  useEffect(
+    () => () => {
+      cleanupRef.current?.()
+    },
+    [],
+  )
+
+  useEffect(() => {
+    const doc = translationRef.current?.contentWindow?.document
+    if (!doc) return
+    const paragraphs = doc.querySelectorAll<HTMLElement>('[data-paragraph-id]')
+    paragraphs.forEach(paragraph => {
+      const paragraphId = paragraph.dataset.paragraphId ?? ''
+      const isDirty = Object.prototype.hasOwnProperty.call(draftTranslations, paragraphId)
+      const isActive = paragraphId === activeParagraphId
+      paragraph.style.backgroundColor = isDirty ? 'rgba(250, 204, 21, 0.2)' : ''
+      paragraph.style.outline = isActive ? '1px solid rgba(59, 130, 246, 0.55)' : 'none'
+      paragraph.style.outlineOffset = isActive ? '2px' : '0'
+    })
+  }, [activeParagraphId, chapterContent?.chapter_id, draftTranslations])
+
   const sourceAvailable = chapterContent?.source_html != null
   const sourceMissing = !sourceAvailable && !chapterLoading && !!chapterContent
   const chapterNumberWidth = Math.max(2, String(chapters.length || 1).length)
@@ -144,6 +405,211 @@ export function ResultReviewPage() {
     }
   }, [showSource, sourceAvailable])
 
+  const syncDraftFromParagraph = (paragraph: HTMLElement): void => {
+    const paragraphId = paragraph.dataset.paragraphId
+    if (!paragraphId) return
+
+    const normalized = normalizeEditableHtml(paragraph.innerHTML)
+    const original = baseTranslationsRef.current[paragraphId] ?? ''
+
+    setDraftTranslations(previous => {
+      if (normalized === original) {
+        if (!(paragraphId in previous)) return previous
+        const next = { ...previous }
+        delete next[paragraphId]
+        return next
+      }
+      if (previous[paragraphId] === normalized) return previous
+      return { ...previous, [paragraphId]: normalized }
+    })
+  }
+
+  const refreshPaletteFromSelection = (): void => {
+    const iframe = translationRef.current
+    const doc = iframe?.contentWindow?.document
+    if (!iframe || !doc || showSourceRef.current) {
+      setPalette(null)
+      return
+    }
+
+    const selection = doc.getSelection()
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      setPalette(null)
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    const paragraph = findParagraphElement(range.commonAncestorContainer)
+    const paragraphId = paragraph?.dataset.paragraphId
+    if (!paragraph || !paragraphId) {
+      setPalette(null)
+      return
+    }
+
+    const rect = range.getBoundingClientRect()
+    if (rect.width === 0 && rect.height === 0) {
+      setPalette(null)
+      return
+    }
+
+    const iframeRect = iframe.getBoundingClientRect()
+    const rawLeft = iframeRect.left + rect.left + rect.width / 2
+    const left = Math.min(window.innerWidth - 16, Math.max(16, rawLeft))
+    const top = Math.max(16, iframeRect.top + rect.top - 12)
+
+    setPalette({
+      paragraphId,
+      options: extractStyleOptions(paragraph),
+      top,
+      left,
+    })
+  }
+
+  const handleSave = async (): Promise<void> => {
+    if (!jobId || pendingEdits.length === 0 || chapterLoading || saving) return
+
+    setSaving(true)
+    try {
+      await apiClient.saveJobContent(jobId, pendingEdits)
+      setBaseTranslations(previous => {
+        const next = { ...previous }
+        pendingEdits.forEach(edit => {
+          next[edit.id] = edit.translation
+        })
+        return next
+      })
+      setDraftTranslations({})
+      setPalette(null)
+      toast.success(`${pendingEdits.length}개 문단을 저장했습니다.`)
+    } catch (err) {
+      toast.error(extractErrorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  saveRef.current = handleSave
+
+  const handleTranslationLoad = () => {
+    cleanupRef.current?.()
+
+    const iframe = translationRef.current
+    const doc = iframe?.contentWindow?.document
+    if (!iframe || !doc) return
+
+    const paragraphs = doc.querySelectorAll<HTMLElement>('[data-paragraph-id]')
+    paragraphs.forEach(paragraph => {
+      paragraph.setAttribute('contenteditable', 'true')
+      paragraph.setAttribute('spellcheck', 'false')
+      paragraph.style.cursor = 'text'
+      paragraph.style.minHeight = '1em'
+    })
+
+    const handleClick = (event: MouseEvent) => {
+      const paragraph = findParagraphElement(event.target as Node)
+      if (!paragraph) return
+      setActiveParagraphId(paragraph.dataset.paragraphId ?? null)
+    }
+
+    const handleInput = (event: Event) => {
+      const paragraph = findParagraphElement(event.target as Node)
+      if (!paragraph) return
+      syncDraftFromParagraph(paragraph)
+    }
+
+    const handleFocusOut = (event: FocusEvent) => {
+      const paragraph = findParagraphElement(event.target as Node)
+      if (!paragraph) return
+      syncDraftFromParagraph(paragraph)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const paragraph = findParagraphElement(event.target as Node)
+      if (!paragraph) return
+
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault()
+        syncDraftFromParagraph(paragraph)
+        void saveRef.current()
+        return
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        insertLineBreak(doc)
+        syncDraftFromParagraph(paragraph)
+      }
+    }
+
+    const handlePaste = (event: ClipboardEvent) => {
+      const paragraph = findParagraphElement(event.target as Node)
+      if (!paragraph) return
+      event.preventDefault()
+      const text = event.clipboardData?.getData('text/plain') ?? ''
+      insertPlainText(doc, text)
+      syncDraftFromParagraph(paragraph)
+    }
+
+    const handleSelectionChange = () => {
+      refreshPaletteFromSelection()
+    }
+
+    const handleScroll = () => {
+      refreshPaletteFromSelection()
+    }
+
+    doc.addEventListener('click', handleClick)
+    doc.addEventListener('input', handleInput)
+    doc.addEventListener('focusout', handleFocusOut)
+    doc.addEventListener('keydown', handleKeyDown)
+    doc.addEventListener('paste', handlePaste)
+    doc.addEventListener('selectionchange', handleSelectionChange)
+    iframe.contentWindow?.addEventListener('scroll', handleScroll, { passive: true })
+
+    cleanupRef.current = () => {
+      doc.removeEventListener('click', handleClick)
+      doc.removeEventListener('input', handleInput)
+      doc.removeEventListener('focusout', handleFocusOut)
+      doc.removeEventListener('keydown', handleKeyDown)
+      doc.removeEventListener('paste', handlePaste)
+      doc.removeEventListener('selectionchange', handleSelectionChange)
+      iframe.contentWindow?.removeEventListener('scroll', handleScroll)
+    }
+  }
+
+  const confirmDiscardChanges = (): boolean => {
+    if (!hasUnsavedChanges) return true
+    return window.confirm('저장되지 않은 변경사항이 있습니다. 이동하면 내용이 사라집니다. 계속할까요?')
+  }
+
+  const handleChapterChange = (nextChapterId: string) => {
+    if (nextChapterId === selectedChapterId) return
+    if (!confirmDiscardChanges()) return
+    setSelectedChapterId(nextChapterId)
+  }
+
+  const handleBackToListClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (!confirmDiscardChanges()) {
+      event.preventDefault()
+    }
+  }
+
+  const handleApplyStyle = (option: StyleOption | null) => {
+    const iframe = translationRef.current
+    const doc = iframe?.contentWindow?.document
+    if (!doc || !palette) return
+    if (!hasSelectionInsideParagraph(doc, palette.paragraphId)) return
+
+    const changed = option === null ? doc.execCommand('removeFormat') : applyInlineStyle(doc, option)
+    if (!changed) return
+
+    const active = doc.querySelector<HTMLElement>(`[data-paragraph-id="${palette.paragraphId}"]`)
+    if (active) {
+      syncDraftFromParagraph(active)
+    }
+    refreshPaletteFromSelection()
+  }
+
   const handleToggleSource = () => {
     if (!sourceAvailable || chapterLoading) return
 
@@ -152,6 +618,7 @@ export function ResultReviewPage() {
     const topParagraphId = getTopmostParagraphId(fromRef.current)
 
     setShowSource(prev => !prev)
+    setPalette(null)
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         scrollToParagraph(toRef.current, topParagraphId)
@@ -171,7 +638,7 @@ export function ResultReviewPage() {
       <header className="sticky top-0 z-20 rounded-xl border bg-card/95 p-2 shadow-xs backdrop-blur supports-[backdrop-filter]:bg-card/75 md:p-3">
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon-xs" className="shrink-0">
-            <Link to="/" aria-label="목록으로">
+            <Link to="/" aria-label="목록으로" onClick={handleBackToListClick}>
               <ChevronLeft className="size-4" />
             </Link>
           </Button>
@@ -191,10 +658,22 @@ export function ResultReviewPage() {
             <Languages className="size-3" />
             {showSource ? '번역' : '원문'}
           </Button>
+
+          <Button
+            type="button"
+            variant={hasUnsavedChanges ? 'default' : 'outline'}
+            size="xs"
+            className="shrink-0"
+            onClick={() => void handleSave()}
+            disabled={!hasUnsavedChanges || chapterLoading || saving}
+          >
+            <Save className="size-3" />
+            {saving ? '저장중' : `저장${hasUnsavedChanges ? ` (${pendingEdits.length})` : ''}`}
+          </Button>
         </div>
 
         <div className="mt-2 flex items-center gap-2">
-          <Select value={selectedChapterId} onValueChange={setSelectedChapterId}>
+          <Select value={selectedChapterId} onValueChange={handleChapterChange}>
             <SelectTrigger size="sm" className="w-full min-w-0 bg-background text-xs md:text-sm">
               <SelectValue placeholder="챕터 선택" />
             </SelectTrigger>
@@ -236,6 +715,7 @@ export function ResultReviewPage() {
               hidden={showSource}
               iframeRef={translationRef}
               title="번역 보기"
+              onLoad={handleTranslationLoad}
             />
             <IframePanel
               html={chapterContent.source_html ?? '<!doctype html><html><body></body></html>'}
@@ -246,6 +726,29 @@ export function ResultReviewPage() {
           </>
         )}
       </section>
+
+      {palette && !showSource && (
+        <div
+          className="fixed z-40 flex max-w-[92vw] items-center gap-1 rounded-lg border bg-background/95 p-1 shadow-md backdrop-blur"
+          style={{ left: `${palette.left}px`, top: `${palette.top}px`, transform: 'translate(-50%, -100%)' }}
+        >
+          <Button type="button" size="xs" variant="outline" onClick={() => handleApplyStyle(null)}>
+            기본 Aa
+          </Button>
+          {palette.options.map(option => (
+            <Button
+              key={option.key}
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => handleApplyStyle(option)}
+              style={option.previewStyle}
+            >
+              Aa
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

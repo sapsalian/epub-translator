@@ -392,6 +392,71 @@ class TestJobsRoute:
 
         assert resp.status_code == 409
 
+    @pytest.mark.asyncio
+    async def test_put_job_content_updates_output_epub(self, client, test_app, tmp_path):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+        })
+        job_id = create_resp.json()["job_id"]
+
+        output_epub = tmp_path / "translated-copy.epub"
+        output_epub.write_bytes(Path("demo_files/translated.epub").read_bytes())
+        self._mark_job_done(test_app, job_id, output_path=output_epub)
+
+        save_resp = await client.put(
+            f"/api/jobs/{job_id}/content",
+            json={
+                "edits": [
+                    {"id": "ch000_p0", "translation": "Edited <strong>preface</strong> text"},
+                ]
+            },
+        )
+
+        assert save_resp.status_code == 200
+        assert save_resp.json()["ok"] is True
+        assert save_resp.json()["updated"] == 1
+
+        content_resp = await client.get(f"/api/jobs/{job_id}/chapters/ch000")
+        assert content_resp.status_code == 200
+        assert content_resp.json()["paragraphs"][0]["translation"].startswith("Edited ")
+        assert "<strong" in content_resp.json()["paragraphs"][0]["translation"]
+
+    @pytest.mark.asyncio
+    async def test_put_job_content_rejects_non_done_job(self, client):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+        })
+        job_id = create_resp.json()["job_id"]
+
+        save_resp = await client.put(
+            f"/api/jobs/{job_id}/content",
+            json={"edits": [{"id": "ch000_p0", "translation": "x"}]},
+        )
+        assert save_resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_put_job_content_rejects_invalid_id(self, client, test_app):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+        })
+        job_id = create_resp.json()["job_id"]
+        self._mark_job_done(test_app, job_id)
+
+        save_resp = await client.put(
+            f"/api/jobs/{job_id}/content",
+            json={"edits": [{"id": "bad-id", "translation": "x"}]},
+        )
+        assert save_resp.status_code == 400
+
 
 class TestDownloadRoute:
     @pytest.mark.asyncio

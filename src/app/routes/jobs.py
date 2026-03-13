@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.epub_walker.reader import extract_chapter_paragraphs, get_chapter_titles, render_chapter_html
+from src.epub_walker.writer import patch_epub_paragraphs
 from src.pipeline.persistence import CheckpointManager, FilePersistenceBackend
 
 from ..jobs.models import JobInfo
@@ -36,6 +37,15 @@ class GlossaryItem(BaseModel):
 
 class GlossaryUpdateRequest(BaseModel):
     terms: list[GlossaryItem]
+
+
+class ContentEdit(BaseModel):
+    id: str = Field(min_length=1)
+    translation: str
+
+
+class ContentSaveRequest(BaseModel):
+    edits: list[ContentEdit] = Field(default_factory=list)
 
 
 async def _get_checkpoint_manager(request: Request, job_id: str) -> CheckpointManager:
@@ -202,6 +212,35 @@ async def get_job_chapter_content(request: Request, job_id: str, chapter_id: str
         "source_html": source_html,
         "translation_html": translation_html,
     }
+
+
+@router.put("/jobs/{job_id}/content")
+async def save_job_content(request: Request, job_id: str, body: ContentSaveRequest):
+    job = _get_done_job_or_error(request, job_id)
+    if isinstance(job, JSONResponse):
+        return job
+
+    output_path = Path(job.output_path)
+    if not output_path.exists():
+        return JSONResponse({"error": "Output EPUB is not available"}, status_code=409)
+
+    edits: dict[str, str] = {}
+    for edit in body.edits:
+        paragraph_id = edit.id.strip()
+        if not paragraph_id:
+            return JSONResponse({"error": "id must be non-empty"}, status_code=400)
+        if paragraph_id in edits:
+            return JSONResponse({"error": f"duplicate paragraph id: {paragraph_id}"}, status_code=400)
+        edits[paragraph_id] = edit.translation
+
+    try:
+        patch_epub_paragraphs(output_path, edits)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError:
+        return JSONResponse({"error": "Output EPUB is not available"}, status_code=409)
+
+    return {"ok": True, "updated": len(edits)}
 
 
 @router.post("/jobs/{job_id}/retry")

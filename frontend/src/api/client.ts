@@ -57,6 +57,11 @@ export interface JobChapterContent {
   source_html: string | null
 }
 
+export interface ContentEdit {
+  id: string
+  translation: string
+}
+
 export interface LanguageOption {
   code: string
   label: string
@@ -90,6 +95,8 @@ export const apiClient = {
   getJobChapters: (jobId: string) => api.get<JobChapter[]>(`/api/jobs/${jobId}/chapters`).then(r => r.data),
   getJobChapterContent: (jobId: string, chapterId: string) =>
     api.get<JobChapterContent>(`/api/jobs/${jobId}/chapters/${chapterId}`).then(r => r.data),
+  saveJobContent: (jobId: string, edits: ContentEdit[]) =>
+    api.put<{ ok: boolean; updated: number }>(`/api/jobs/${jobId}/content`, { edits }).then(r => r.data),
   getJobGlossary: (jobId: string) =>
     api.get<{ terms: GlossaryTerm[]; has_edits: boolean }>(`/api/jobs/${jobId}/glossary`).then(r => r.data),
   updateJobGlossary: (jobId: string, terms: GlossaryTerm[]) =>
