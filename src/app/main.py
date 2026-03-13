@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,14 +12,46 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import AppConfig
 from .jobs.manager import JobManager
+from .jobs.models import JobState
 from .jobs.worker import run_worker
 from .routes import download, health, jobs, languages, settings, upload
 from .settings.manager import SettingsManager
 
 
+def migrate_source_epubs(config: AppConfig, job_manager: JobManager) -> int:
+    updated_count = 0
+
+    for job in job_manager.list_jobs():
+        if job.state != JobState.DONE:
+            continue
+        if job.source_epub_path:
+            continue
+        if not job.input_path:
+            continue
+
+        input_path = Path(job.input_path)
+        if not input_path.exists():
+            continue
+
+        source_dest = config.source_epub_dir / f"{job.job_id}.epub"
+        if not source_dest.exists():
+            source_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(input_path, source_dest)
+
+        if source_dest.exists():
+            job.source_epub_path = str(source_dest)
+            updated_count += 1
+
+    if updated_count > 0:
+        job_manager.save()
+
+    return updated_count
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config: AppConfig = app.state.config
+    migrate_source_epubs(config, app.state.job_manager)
     worker_task = asyncio.create_task(
         run_worker(
             manager=app.state.job_manager,
@@ -27,6 +60,7 @@ async def lifespan(app: FastAPI):
             checkpoint_dir=config.checkpoint_dir,
             upload_dir=config.upload_dir,
             workspace_dir=config.workspace_dir,
+            source_epub_dir=config.source_epub_dir,
         )
     )
     yield

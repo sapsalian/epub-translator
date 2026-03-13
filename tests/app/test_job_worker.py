@@ -75,6 +75,7 @@ async def test_worker_copies_upload_to_workspace(monkeypatch, tmp_path: Path):
     output_dir = tmp_path / "output"
     checkpoint_dir = tmp_path / "checkpoints"
     workspace_dir = tmp_path / "workspaces"
+    source_epub_dir = tmp_path / "source_epubs"
 
     upload_epub_dir = upload_dir / "u1"
     upload_epub_dir.mkdir(parents=True, exist_ok=True)
@@ -91,6 +92,7 @@ async def test_worker_copies_upload_to_workspace(monkeypatch, tmp_path: Path):
             checkpoint_dir=checkpoint_dir,
             upload_dir=upload_dir,
             workspace_dir=workspace_dir,
+            source_epub_dir=source_epub_dir,
         )
     )
 
@@ -106,6 +108,8 @@ async def test_worker_copies_upload_to_workspace(monkeypatch, tmp_path: Path):
     assert job.input_path is not None
     assert Path(job.input_path).exists()
     assert Path(job.input_path).parent == workspace_dir / "j1"
+    assert job.source_epub_path == str(source_epub_dir / "j1.epub")
+    assert Path(job.source_epub_path).exists()
 
 
 @pytest.mark.asyncio
@@ -119,6 +123,7 @@ async def test_worker_uses_existing_workspace_when_upload_missing(monkeypatch, t
     output_dir = tmp_path / "output"
     checkpoint_dir = tmp_path / "checkpoints"
     workspace_dir = tmp_path / "workspaces"
+    source_epub_dir = tmp_path / "source_epubs"
 
     workspace_epub = workspace_dir / "j1" / "book.epub"
     workspace_epub.parent.mkdir(parents=True, exist_ok=True)
@@ -135,6 +140,7 @@ async def test_worker_uses_existing_workspace_when_upload_missing(monkeypatch, t
             checkpoint_dir=checkpoint_dir,
             upload_dir=upload_dir,
             workspace_dir=workspace_dir,
+            source_epub_dir=source_epub_dir,
         )
     )
 
@@ -148,6 +154,8 @@ async def test_worker_uses_existing_workspace_when_upload_missing(monkeypatch, t
     assert job is not None
     assert job.state == JobState.DONE
     assert job.input_path == str(workspace_epub)
+    assert job.source_epub_path == str(source_epub_dir / "j1.epub")
+    assert Path(job.source_epub_path).exists()
 
 
 @pytest.mark.asyncio
@@ -161,6 +169,7 @@ async def test_worker_pauses_glossary_review_mode(monkeypatch, tmp_path: Path):
     output_dir = tmp_path / "output"
     checkpoint_dir = tmp_path / "checkpoints"
     workspace_dir = tmp_path / "workspaces"
+    source_epub_dir = tmp_path / "source_epubs"
 
     upload_epub_dir = upload_dir / "u1"
     upload_epub_dir.mkdir(parents=True, exist_ok=True)
@@ -177,6 +186,7 @@ async def test_worker_pauses_glossary_review_mode(monkeypatch, tmp_path: Path):
             checkpoint_dir=checkpoint_dir,
             upload_dir=upload_dir,
             workspace_dir=workspace_dir,
+            source_epub_dir=source_epub_dir,
         )
     )
 
@@ -204,6 +214,7 @@ async def test_worker_uses_edited_glossary_after_approval(monkeypatch, tmp_path:
     output_dir = tmp_path / "output"
     checkpoint_dir = tmp_path / "checkpoints"
     workspace_dir = tmp_path / "workspaces"
+    source_epub_dir = tmp_path / "source_epubs"
 
     upload_epub_dir = upload_dir / "u1"
     upload_epub_dir.mkdir(parents=True, exist_ok=True)
@@ -231,6 +242,7 @@ async def test_worker_uses_edited_glossary_after_approval(monkeypatch, tmp_path:
             checkpoint_dir=checkpoint_dir,
             upload_dir=upload_dir,
             workspace_dir=workspace_dir,
+            source_epub_dir=source_epub_dir,
         )
     )
 
@@ -244,3 +256,5 @@ async def test_worker_uses_edited_glossary_after_approval(monkeypatch, tmp_path:
     assert job is not None
     assert job.state == JobState.DONE
     assert _DummyOrchestrator.last_glossary_overrides == expected_mappings
+    assert job.source_epub_path == str(source_epub_dir / "j1.epub")
+    assert Path(job.source_epub_path).exists()

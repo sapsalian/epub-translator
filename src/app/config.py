@@ -36,6 +36,16 @@ class AppConfig:
     def workspace_dir(self) -> Path:
         return self.base_dir / "workspaces"
 
+    @property
+    def source_epub_dir(self) -> Path:
+        return self.base_dir / "source_epubs"
+
     def ensure_dirs(self) -> None:
-        for d in (self.upload_dir, self.output_dir, self.checkpoint_dir, self.workspace_dir):
+        for d in (
+            self.upload_dir,
+            self.output_dir,
+            self.checkpoint_dir,
+            self.workspace_dir,
+            self.source_epub_dir,
+        ):
             d.mkdir(parents=True, exist_ok=True)

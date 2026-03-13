@@ -31,6 +31,7 @@ class JobInfo:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     epub_id: str | None = None
     input_path: str | None = None
+    source_epub_path: str | None = None
     download_token: str | None = None
     output_path: str | None = None
 
@@ -51,6 +52,7 @@ class JobInfo:
             "created_at": self.created_at,
             "epub_id": self.epub_id,
             "input_path": self.input_path,
+            "source_epub_path": self.source_epub_path,
             "download_token": self.download_token,
             "output_path": self.output_path,
         }
@@ -73,6 +75,7 @@ class JobInfo:
             created_at=data.get("created_at", datetime.now().isoformat()),
             epub_id=data.get("epub_id"),
             input_path=data.get("input_path"),
+            source_epub_path=data.get("source_epub_path"),
             download_token=data.get("download_token"),
             output_path=data.get("output_path"),
         )

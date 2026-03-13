@@ -44,6 +44,7 @@ async def run_worker(
     checkpoint_dir: Path,
     upload_dir: Path,
     workspace_dir: Path,
+    source_epub_dir: Path,
 ) -> None:
     logger.info("Translation worker started")
 
@@ -137,6 +138,14 @@ async def run_worker(
                 job.output_path = result.output_path
                 job.download_token = manager.register_download(Path(result.output_path))
                 job.workflow_options["review_approved"] = False
+
+                source_dest = source_epub_dir / f"{job.job_id}.epub"
+                if job.input_path and Path(job.input_path).exists() and not source_dest.exists():
+                    source_dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(job.input_path, source_dest)
+                if source_dest.exists():
+                    job.source_epub_path = str(source_dest)
+
                 manager.save()
 
                 logger.info("Job %s completed: %s", job_id, result.output_path)

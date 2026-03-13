@@ -18,6 +18,7 @@ class TestAppConfig:
         assert config.output_dir == tmp_path / "output"
         assert config.checkpoint_dir == tmp_path / "checkpoints"
         assert config.workspace_dir == tmp_path / "workspaces"
+        assert config.source_epub_dir == tmp_path / "source_epubs"
 
     def test_ensure_dirs(self, tmp_path):
         config = AppConfig(base_dir=tmp_path)
@@ -26,3 +27,4 @@ class TestAppConfig:
         assert config.output_dir.is_dir()
         assert config.checkpoint_dir.is_dir()
         assert config.workspace_dir.is_dir()
+        assert config.source_epub_dir.is_dir()

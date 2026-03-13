@@ -53,6 +53,7 @@ class TestJobInfo:
         assert job.progress == 0.0
         assert job.error == ""
         assert job.download_token is None
+        assert job.source_epub_path is None
 
     def test_to_dict_includes_workflow_fields(self):
         job = self._make_job(
@@ -62,3 +63,8 @@ class TestJobInfo:
         data = job.to_dict()
         assert data["workflow_mode"] == "glossary_review"
         assert data["workflow_options"] == {"review_required": True}
+
+    def test_to_dict_from_dict_roundtrip_with_source_epub_path(self):
+        job = self._make_job(source_epub_path="/tmp/source_epubs/j1.epub")
+        restored = JobInfo.from_dict(job.to_dict())
+        assert restored.source_epub_path == "/tmp/source_epubs/j1.epub"
