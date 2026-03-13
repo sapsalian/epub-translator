@@ -238,6 +238,16 @@ function hasSelectionInsideParagraph(doc: Document, paragraphId: string): boolea
   return paragraph?.dataset.paragraphId === paragraphId
 }
 
+function findSelectionParagraph(selection: Selection): HTMLElement | null {
+  if (selection.rangeCount === 0) return null
+  const range = selection.getRangeAt(0)
+  return (
+    findParagraphElement(range.commonAncestorContainer) ??
+    findParagraphElement(selection.anchorNode) ??
+    findParagraphElement(selection.focusNode)
+  )
+}
+
 function applyInlineStyle(doc: Document, option: StyleOption): boolean {
   const selection = doc.getSelection()
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false
@@ -471,7 +481,7 @@ export function ResultReviewPage() {
     }
 
     const range = selection.getRangeAt(0)
-    const paragraph = findParagraphElement(range.commonAncestorContainer)
+    const paragraph = findSelectionParagraph(selection)
     const paragraphId = paragraph?.dataset.paragraphId
     if (!paragraph || !paragraphId) {
       setPalette(null)
@@ -479,14 +489,11 @@ export function ResultReviewPage() {
     }
 
     const rect = range.getBoundingClientRect()
-    if (rect.width === 0 && rect.height === 0) {
-      setPalette(null)
-      return
-    }
-
-    const rawLeft = iframeRect.left + rect.left + rect.width / 2
+    const targetRect =
+      rect.width === 0 && rect.height === 0 ? paragraph.getBoundingClientRect() : rect
+    const rawLeft = iframeRect.left + targetRect.left + targetRect.width / 2
     const left = Math.min(window.innerWidth - 16, Math.max(16, rawLeft))
-    const top = Math.max(16, iframeRect.top + rect.top - 12)
+    const top = Math.max(16, iframeRect.top + targetRect.top - 12)
 
     setPalette({
       paragraphId,
@@ -590,11 +597,28 @@ export function ResultReviewPage() {
       refreshPaletteFromSelection()
     }
 
+    const handleMouseUp = () => {
+      const selection = doc.getSelection()
+      const paragraph = selection ? findSelectionParagraph(selection) : null
+      const paragraphId = paragraph?.dataset.paragraphId ?? null
+      if (paragraphId) {
+        activeParagraphIdRef.current = paragraphId
+        setActiveParagraphId(paragraphId)
+      }
+      refreshPaletteFromSelection()
+    }
+
+    const handleKeyUp = () => {
+      refreshPaletteFromSelection()
+    }
+
     const handleScroll = () => {
       refreshPaletteFromSelection()
     }
 
     doc.addEventListener('click', handleClick)
+    doc.addEventListener('mouseup', handleMouseUp)
+    doc.addEventListener('keyup', handleKeyUp)
     doc.addEventListener('input', handleInput)
     doc.addEventListener('focusout', handleFocusOut)
     doc.addEventListener('keydown', handleKeyDown)
@@ -604,6 +628,8 @@ export function ResultReviewPage() {
 
     cleanupRef.current = () => {
       doc.removeEventListener('click', handleClick)
+      doc.removeEventListener('mouseup', handleMouseUp)
+      doc.removeEventListener('keyup', handleKeyUp)
       doc.removeEventListener('input', handleInput)
       doc.removeEventListener('focusout', handleFocusOut)
       doc.removeEventListener('keydown', handleKeyDown)
