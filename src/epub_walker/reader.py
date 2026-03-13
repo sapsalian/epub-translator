@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import mimetypes
 from pathlib import PurePosixPath
 import posixpath
 from zipfile import ZipFile
@@ -11,6 +13,7 @@ from .parser import _find_opf_path, get_spine_xhtml_paths_by_order
 _OPF_NS = {"opf": "http://www.idpf.org/2007/opf"}
 _XHTML_NS = {"xhtml": "http://www.w3.org/1999/xhtml"}
 _NCX_NS = {"ncx": "http://www.daisy.org/z3986/2005/ncx/"}
+_XLINK_NS = "http://www.w3.org/1999/xlink"
 _BLOCK_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li")
 
 
@@ -73,6 +76,8 @@ def render_chapter_html(zf: ZipFile, chapter_idx: int, chapter_id: str) -> str:
         style = etree.Element(style_tag)
         style.text = css_content
         link.getparent().replace(link, style)
+
+    _inline_image_assets(root, zf, chapter_path)
 
     for index, element in enumerate(_iter_block_elements(root)):
         element.set("data-paragraph-id", f"{chapter_id}_p{index}")
@@ -165,3 +170,44 @@ def _resolve_relative_path(base_path: PurePosixPath, href: str) -> PurePosixPath
 def _iter_block_elements(root: etree._Element) -> list[etree._Element]:
     xpath = " | ".join(f".//*[local-name()='{tag}']" for tag in _BLOCK_TAGS)
     return list(root.xpath(xpath))
+
+
+def _inline_image_assets(root: etree._Element, zf: ZipFile, chapter_path: PurePosixPath) -> None:
+    for image in root.xpath(".//*[local-name()='img'][@src]"):
+        data_uri = _load_data_uri(zf, chapter_path, image.get("src") or "")
+        if data_uri:
+            image.set("src", data_uri)
+
+    for svg_image in root.xpath(".//*[local-name()='image']"):
+        xlink_attr = f"{{{_XLINK_NS}}}href"
+        href_value = svg_image.get(xlink_attr) or svg_image.get("href") or ""
+        data_uri = _load_data_uri(zf, chapter_path, href_value)
+        if not data_uri:
+            continue
+
+        if svg_image.get(xlink_attr) is not None:
+            svg_image.set(xlink_attr, data_uri)
+        else:
+            svg_image.set("href", data_uri)
+
+
+def _load_data_uri(zf: ZipFile, chapter_path: PurePosixPath, href: str) -> str | None:
+    href = href.strip()
+    if not href:
+        return None
+    if href.startswith(("data:", "http://", "https://", "//", "#")):
+        return None
+
+    asset_href = href.split("#", 1)[0].split("?", 1)[0]
+    if not asset_href:
+        return None
+
+    asset_path = _resolve_relative_path(chapter_path, asset_href)
+    try:
+        payload = zf.read(asset_path.as_posix())
+    except KeyError:
+        return None
+
+    media_type = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
+    encoded = base64.b64encode(payload).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"

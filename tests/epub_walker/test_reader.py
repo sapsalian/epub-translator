@@ -60,3 +60,46 @@ class TestRenderChapterHtml:
         assert "<style" in html
         assert 'data-paragraph-id="ch002_p0"' in html
         assert 'data-paragraph-id="ch002_p1"' in html
+
+    def test_inlines_svg_image_href(self, tmp_path):
+        epub_path = tmp_path / "image-inline.epub"
+        with ZipFile(epub_path, "w") as zf:
+            zf.writestr(
+                "META-INF/container.xml",
+                """<?xml version="1.0" encoding="utf-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>""",
+            )
+            zf.writestr(
+                "OEBPS/content.opf",
+                """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <manifest>
+    <item id="c1" href="wrap0000.xhtml" media-type="application/xhtml+xml"/>
+    <item id="cover" href="cover.jpg" media-type="image/jpeg"/>
+  </manifest>
+  <spine>
+    <itemref idref="c1"/>
+  </spine>
+</package>""",
+            )
+            zf.writestr(
+                "OEBPS/wrap0000.xhtml",
+                """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <body>
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+      <image xlink:href="cover.jpg"/>
+    </svg>
+  </body>
+</html>""",
+            )
+            zf.writestr("OEBPS/cover.jpg", b"\xff\xd8\xff\xe0fake-jpeg")
+
+        with ZipFile(epub_path) as zf:
+            html = render_chapter_html(zf, chapter_idx=0, chapter_id="ch000")
+
+        assert "xlink:href=\"data:image/jpeg;base64," in html
