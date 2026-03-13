@@ -38,6 +38,23 @@ export interface GlossaryTerm {
   target: string
 }
 
+export interface JobChapter {
+  chapter_id: string
+  title: string
+}
+
+export interface ChapterParagraph {
+  id: string
+  source: string
+  translation: string
+}
+
+export interface JobChapterContent {
+  chapter_id: string
+  title: string
+  paragraphs: ChapterParagraph[]
+}
+
 export interface LanguageOption {
   code: string
   label: string
@@ -68,6 +85,9 @@ export const apiClient = {
 
   listJobs: () => api.get<JobInfo[]>('/api/jobs').then(r => r.data),
   getJob: (jobId: string) => api.get<JobInfo>(`/api/jobs/${jobId}`).then(r => r.data),
+  getJobChapters: (jobId: string) => api.get<JobChapter[]>(`/api/jobs/${jobId}/chapters`).then(r => r.data),
+  getJobChapterContent: (jobId: string, chapterId: string) =>
+    api.get<JobChapterContent>(`/api/jobs/${jobId}/chapters/${chapterId}`).then(r => r.data),
   getJobGlossary: (jobId: string) =>
     api.get<{ terms: GlossaryTerm[]; has_edits: boolean }>(`/api/jobs/${jobId}/glossary`).then(r => r.data),
   updateJobGlossary: (jobId: string, terms: GlossaryTerm[]) =>
