@@ -46,6 +46,10 @@
   - `GET /api/jobs/{id}/chapters/{chapter_id}` 응답에 `source_html`, `translation_html` 추가
   - DONE job 원문 EPUB을 `~/.epub-translator/source_epubs/{job_id}.epub`에 영구 저장
   - startup 시 기존 DONE job 대상 `source_epub_path` 마이그레이션 수행
+- 결과 뷰어 UX 안정화 Phase 3c:
+  - 페이지 고정 + iframe 단일 스크롤 구조로 변경 (모바일/데스크탑 통일)
+  - 모바일 compact sticky 뷰어 컨트롤(챕터 선택 + 원문/번역 토글)
+  - `render_chapter_html()` runtime style guard 주입 (`touch-action: pan-y`, `overscroll-behavior-x`, `table/pre` 예외 가로 스크롤)
 
 ## Python Environment
 
