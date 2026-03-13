@@ -131,6 +131,11 @@ export function JobCard({ job, onDeleted }: JobCardProps) {
               <Link to={`/jobs/${job.job_id}/review/glossary`}>검토</Link>
             </Button>
           )}
+          {job.state === 'done' && (
+            <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+              <Link to={`/jobs/${job.job_id}/review/result`}>뷰어</Link>
+            </Button>
+          )}
           {job.state === 'done' && job.download_token && (
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDownload}>
               <Download size={13} />

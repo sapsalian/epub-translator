@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { AppShell } from './components/layout/AppShell'
 import { MainPage } from './pages/MainPage'
 import { GlossaryReviewPage } from './pages/GlossaryReviewPage'
+import { ResultReviewPage } from './pages/ResultReviewPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
           <Route path="/" element={<MainPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/jobs/:id/review/glossary" element={<GlossaryReviewPage />} />
+          <Route path="/jobs/:id/review/result" element={<ResultReviewPage />} />
         </Routes>
       </AppShell>
       <Toaster />
