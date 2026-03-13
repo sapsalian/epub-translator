@@ -280,6 +280,7 @@ export function ResultReviewPage() {
   const cleanupRef = useRef<(() => void) | null>(null)
   const showSourceRef = useRef(false)
   const baseTranslationsRef = useRef<Record<string, string>>({})
+  const activeParagraphIdRef = useRef<string | null>(null)
   const saveRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
@@ -365,6 +366,10 @@ export function ResultReviewPage() {
   }, [baseTranslations])
 
   useEffect(() => {
+    activeParagraphIdRef.current = activeParagraphId
+  }, [activeParagraphId])
+
+  useEffect(() => {
     if (!hasUnsavedChanges) return
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault()
@@ -433,8 +438,35 @@ export function ResultReviewPage() {
     }
 
     const selection = doc.getSelection()
+    const iframeRect = iframe.getBoundingClientRect()
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      setPalette(null)
+      const fallbackParagraphId = activeParagraphIdRef.current
+      if (!fallbackParagraphId) {
+        setPalette(null)
+        return
+      }
+
+      const fallbackParagraph = doc.querySelector<HTMLElement>(
+        `[data-paragraph-id="${fallbackParagraphId}"]`,
+      )
+      if (!fallbackParagraph) {
+        setPalette(null)
+        return
+      }
+
+      const paragraphRect = fallbackParagraph.getBoundingClientRect()
+      const left = Math.min(
+        window.innerWidth - 16,
+        Math.max(16, iframeRect.left + paragraphRect.left + paragraphRect.width / 2),
+      )
+      const top = Math.max(40, iframeRect.top + paragraphRect.top + 8)
+
+      setPalette({
+        paragraphId: fallbackParagraphId,
+        options: extractStyleOptions(fallbackParagraph),
+        top,
+        left,
+      })
       return
     }
 
@@ -452,7 +484,6 @@ export function ResultReviewPage() {
       return
     }
 
-    const iframeRect = iframe.getBoundingClientRect()
     const rawLeft = iframeRect.left + rect.left + rect.width / 2
     const left = Math.min(window.innerWidth - 16, Math.max(16, rawLeft))
     const top = Math.max(16, iframeRect.top + rect.top - 12)
@@ -508,7 +539,12 @@ export function ResultReviewPage() {
     const handleClick = (event: MouseEvent) => {
       const paragraph = findParagraphElement(event.target as Node)
       if (!paragraph) return
-      setActiveParagraphId(paragraph.dataset.paragraphId ?? null)
+      const paragraphId = paragraph.dataset.paragraphId ?? null
+      activeParagraphIdRef.current = paragraphId
+      setActiveParagraphId(paragraphId)
+      requestAnimationFrame(() => {
+        refreshPaletteFromSelection()
+      })
     }
 
     const handleInput = (event: Event) => {
