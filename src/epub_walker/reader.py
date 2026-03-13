@@ -47,6 +47,40 @@ def extract_chapter_paragraphs(
     return paragraphs
 
 
+def render_chapter_html(zf: ZipFile, chapter_idx: int, chapter_id: str) -> str:
+    spine_paths = get_spine_xhtml_paths_by_order(zf)
+    chapter_path = spine_paths[chapter_idx]
+    root = etree.fromstring(zf.read(chapter_path.as_posix()), parser=etree.XMLParser(recover=True))
+
+    for link in root.xpath(".//*[local-name()='link']"):
+        rel = (link.get("rel") or "").lower().split()
+        href = (link.get("href") or "").strip()
+        if "stylesheet" not in rel:
+            continue
+        if not href or "://" in href or href.startswith("//"):
+            link.getparent().remove(link)
+            continue
+
+        css_path = _resolve_relative_path(chapter_path, href)
+        try:
+            css_content = zf.read(css_path.as_posix()).decode("utf-8", errors="replace")
+        except KeyError:
+            link.getparent().remove(link)
+            continue
+
+        ns = etree.QName(link).namespace
+        style_tag = f"{{{ns}}}style" if ns else "style"
+        style = etree.Element(style_tag)
+        style.text = css_content
+        link.getparent().replace(link, style)
+
+    for index, element in enumerate(_iter_block_elements(root)):
+        element.set("data-paragraph-id", f"{chapter_id}_p{index}")
+
+    rendered = etree.tostring(root, encoding="utf-8", method="xml", xml_declaration=True)
+    return rendered.decode("utf-8", errors="replace")
+
+
 def _load_nav_title_map(zf: ZipFile) -> dict[PurePosixPath, str]:
     opf_path = _find_opf_path(zf)
     root = etree.fromstring(zf.read(opf_path.as_posix()))
@@ -112,8 +146,7 @@ def _extract_block_inner_html(zf: ZipFile | None, chapter_path: PurePosixPath) -
         return []
 
     root = etree.fromstring(zf.read(chapter_path.as_posix()))
-    xpath = " | ".join(f".//*[local-name()='{tag}']" for tag in _BLOCK_TAGS)
-    return [_inner_html(element).strip() for element in root.xpath(xpath)]
+    return [_inner_html(element).strip() for element in _iter_block_elements(root)]
 
 
 def _inner_html(element: etree._Element) -> str:
@@ -128,3 +161,7 @@ def _inner_html(element: etree._Element) -> str:
 def _resolve_relative_path(base_path: PurePosixPath, href: str) -> PurePosixPath:
     return PurePosixPath(posixpath.normpath(posixpath.join(base_path.parent.as_posix(), href)))
 
+
+def _iter_block_elements(root: etree._Element) -> list[etree._Element]:
+    xpath = " | ".join(f".//*[local-name()='{tag}']" for tag in _BLOCK_TAGS)
+    return list(root.xpath(xpath))

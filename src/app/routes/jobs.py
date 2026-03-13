@@ -11,7 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.epub_walker.reader import extract_chapter_paragraphs, get_chapter_titles
+from src.epub_walker.reader import extract_chapter_paragraphs, get_chapter_titles, render_chapter_html
 from src.pipeline.persistence import CheckpointManager, FilePersistenceBackend
 
 from ..jobs.models import JobInfo
@@ -62,6 +62,18 @@ def _get_done_job_or_error(request: Request, job_id: str) -> JobInfo | JSONRespo
     if not job.output_path:
         return JSONResponse({"error": "Output EPUB is not available"}, status_code=409)
     return job
+
+
+def _resolve_source_epub_path(job: JobInfo) -> Path | None:
+    candidates = []
+    if job.source_epub_path:
+        candidates.append(Path(job.source_epub_path))
+    if job.input_path:
+        candidates.append(Path(job.input_path))
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
 
 
 @router.post("/jobs")
@@ -166,17 +178,20 @@ async def get_job_chapter_content(request: Request, job_id: str, chapter_id: str
 
     chapter_idx = int(chapter_id[2:])
     output_path = Path(job.output_path)
-    source_path = Path(job.input_path) if job.input_path else None
-    source_exists = source_path is not None and source_path.exists()
+    source_path = _resolve_source_epub_path(job)
 
     with ZipFile(output_path) as translation_zf:
         titles = get_chapter_titles(translation_zf)
         if chapter_idx < 0 or chapter_idx >= len(titles):
             return JSONResponse({"error": "Chapter not found"}, status_code=404)
 
-        if source_exists:
+        translation_html = render_chapter_html(translation_zf, chapter_idx, chapter_id)
+
+        source_html: str | None = None
+        if source_path is not None:
             with ZipFile(source_path) as source_zf:
                 paragraphs = extract_chapter_paragraphs(source_zf, translation_zf, chapter_idx, chapter_id)
+                source_html = render_chapter_html(source_zf, chapter_idx, chapter_id)
         else:
             paragraphs = extract_chapter_paragraphs(None, translation_zf, chapter_idx, chapter_id)
 
@@ -184,6 +199,8 @@ async def get_job_chapter_content(request: Request, job_id: str, chapter_id: str
         "chapter_id": chapter_id,
         "title": titles[chapter_idx],
         "paragraphs": paragraphs,
+        "source_html": source_html,
+        "translation_html": translation_html,
     }
 
 

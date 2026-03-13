@@ -1,7 +1,7 @@
 from pathlib import Path
 from zipfile import ZipFile
 
-from src.epub_walker.reader import extract_chapter_paragraphs, get_chapter_titles
+from src.epub_walker.reader import extract_chapter_paragraphs, get_chapter_titles, render_chapter_html
 
 
 SAMPLE_EPUB = Path("demo_files/sample.epub")
@@ -50,3 +50,13 @@ class TestExtractChapterParagraphs:
         assert paragraphs
         assert all(paragraph["source"] == "" for paragraph in paragraphs)
         assert paragraphs[0]["translation"].startswith("[Translated: Preface]")
+
+
+class TestRenderChapterHtml:
+    def test_inlines_css_and_assigns_data_paragraph_id(self):
+        with ZipFile(TRANSLATED_EPUB) as zf:
+            html = render_chapter_html(zf, chapter_idx=2, chapter_id="ch002")
+
+        assert "<style" in html
+        assert 'data-paragraph-id="ch002_p0"' in html
+        assert 'data-paragraph-id="ch002_p1"' in html

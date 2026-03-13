@@ -92,6 +92,7 @@ class TestJobsRoute:
         job_id: str,
         *,
         input_path: Path | None = Path("demo_files/sample.epub"),
+        source_epub_path: Path | None = None,
         output_path: Path = Path("demo_files/translated.epub"),
     ):
         manager = test_app.state.job_manager
@@ -99,6 +100,7 @@ class TestJobsRoute:
         assert job is not None
         job.state = JobState.DONE
         job.input_path = str(input_path) if input_path is not None else None
+        job.source_epub_path = str(source_epub_path) if source_epub_path is not None else None
         job.output_path = str(output_path)
         manager.save()
 
@@ -327,6 +329,11 @@ class TestJobsRoute:
         assert data["paragraphs"][0]["id"] == "ch002_p0"
         assert data["paragraphs"][0]["source"].startswith("Chapter 1: The Beginning of the End")
         assert data["paragraphs"][0]["translation"].startswith("[Translated: Chapter 1: The Beginning of the End]")
+        assert data["source_html"] is not None
+        assert data["source_html"].startswith("<?xml")
+        assert 'data-paragraph-id="ch002_p0"' in data["source_html"]
+        assert data["translation_html"].startswith("<?xml")
+        assert 'data-paragraph-id="ch002_p0"' in data["translation_html"]
 
     @pytest.mark.asyncio
     async def test_get_job_chapter_content_without_source_epub(self, client, test_app):
@@ -345,6 +352,31 @@ class TestJobsRoute:
         data = resp.json()
         assert data["paragraphs"]
         assert all(paragraph["source"] == "" for paragraph in data["paragraphs"])
+        assert data["source_html"] is None
+        assert data["translation_html"].startswith("<?xml")
+
+    @pytest.mark.asyncio
+    async def test_get_job_chapter_content_prefers_source_epub_path(self, client, test_app):
+        upload_id = await self._upload_epub(client)
+        create_resp = await client.post("/api/jobs", json={
+            "upload_id": upload_id,
+            "source_language": "en",
+            "target_language": "ko",
+        })
+        job_id = create_resp.json()["job_id"]
+        self._mark_job_done(
+            test_app,
+            job_id,
+            input_path=Path("demo_files/not-found.epub"),
+            source_epub_path=Path("demo_files/sample.epub"),
+        )
+
+        resp = await client.get(f"/api/jobs/{job_id}/chapters/ch000")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["source_html"] is not None
+        assert "Preface" in data["source_html"]
 
     @pytest.mark.asyncio
     async def test_get_job_chapters_rejects_non_done_job(self, client):
