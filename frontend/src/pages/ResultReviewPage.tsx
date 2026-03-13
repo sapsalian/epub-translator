@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Eye, Languages } from 'lucide-react'
+import { ChevronLeft, Languages } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -24,54 +24,23 @@ interface IframePanelProps {
   html: string
   hidden: boolean
   iframeRef: React.RefObject<HTMLIFrameElement | null>
+  title: string
 }
 
-function IframePanel({ html, hidden, iframeRef }: IframePanelProps) {
-  const [height, setHeight] = useState(0)
-  const resizeObserverRef = useRef<ResizeObserver | null>(null)
-
-  const updateHeight = () => {
-    const doc = iframeRef.current?.contentWindow?.document
-    if (!doc?.body) return
-    setHeight(doc.body.scrollHeight)
-  }
-
-  const handleLoad = () => {
-    resizeObserverRef.current?.disconnect()
-    resizeObserverRef.current = null
-
-    const doc = iframeRef.current?.contentWindow?.document
-    if (!doc?.body) return
-
-    const observer = new ResizeObserver(() => {
-      updateHeight()
-    })
-    observer.observe(doc.body)
-    resizeObserverRef.current = observer
-    updateHeight()
-  }
-
-  useEffect(() => {
-    return () => {
-      resizeObserverRef.current?.disconnect()
-      resizeObserverRef.current = null
-    }
-  }, [])
-
+function IframePanel({ html, hidden, iframeRef, title }: IframePanelProps) {
   return (
     <iframe
       ref={iframeRef}
       srcDoc={html}
-      onLoad={handleLoad}
       sandbox="allow-same-origin"
       style={{
         width: '100%',
+        height: '100%',
         border: 'none',
         display: hidden ? 'none' : 'block',
-        height: `${Math.max(height, 480)}px`,
         background: 'white',
       }}
-      title={hidden ? 'source-hidden' : 'viewer-visible'}
+      title={title}
     />
   )
 }
@@ -166,6 +135,7 @@ export function ResultReviewPage() {
   }, [jobId, selectedChapterId])
 
   const sourceAvailable = chapterContent?.source_html != null
+  const sourceMissing = !sourceAvailable && !chapterLoading && !!chapterContent
 
   useEffect(() => {
     if (!sourceAvailable && showSource) {
@@ -174,7 +144,7 @@ export function ResultReviewPage() {
   }, [showSource, sourceAvailable])
 
   const handleToggleSource = () => {
-    if (!sourceAvailable) return
+    if (!sourceAvailable || chapterLoading) return
 
     const fromRef = showSource ? sourceRef : translationRef
     const toRef = showSource ? translationRef : sourceRef
@@ -193,79 +163,85 @@ export function ResultReviewPage() {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-7xl flex-col gap-4 p-4 md:p-6">
-      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-xs">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <Button asChild variant="ghost" size="sm" className="w-fit px-0 text-muted-foreground">
-              <Link to="/">
-                <ChevronLeft className="size-4" />
-                목록으로
-              </Link>
-            </Button>
-            <h1 className="text-lg font-semibold">{job?.filename}</h1>
-            <p className="text-sm text-muted-foreground">
-              EPUB 원본 스타일 그대로 확인할 수 있습니다.
-            </p>
-          </div>
+    <div className="mx-auto flex h-[calc(100dvh-3rem)] max-w-7xl flex-col overflow-hidden px-2 pb-2 pt-2 md:h-dvh md:px-4 md:pb-4 md:pt-4">
+      <header className="sticky top-0 z-20 rounded-xl border bg-card/95 p-2 shadow-xs backdrop-blur supports-[backdrop-filter]:bg-card/75 md:p-3">
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="icon-xs" className="shrink-0">
+            <Link to="/" aria-label="목록으로">
+              <ChevronLeft className="size-4" />
+            </Link>
+          </Button>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Eye className="size-4 text-muted-foreground" />
-            <Select value={selectedChapterId} onValueChange={setSelectedChapterId}>
-              <SelectTrigger className="w-full min-w-64 bg-background md:w-80">
-                <SelectValue placeholder="챕터 선택" />
-              </SelectTrigger>
-              <SelectContent>
-                {chapters.map(chapter => (
-                  <SelectItem key={chapter.chapter_id} value={chapter.chapter_id}>
-                    {chapter.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant={showSource ? 'default' : 'outline'}
-              onClick={handleToggleSource}
-              disabled={!sourceAvailable || chapterLoading}
-            >
-              <Languages className="size-4" />
-              {showSource ? '번역 보기' : '원문 보기'}
-            </Button>
-          </div>
+          <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground/90 md:text-sm">
+            {job?.filename}
+          </p>
+
+          <Button
+            type="button"
+            variant={showSource ? 'default' : 'outline'}
+            size="xs"
+            className="shrink-0"
+            onClick={handleToggleSource}
+            disabled={!sourceAvailable || chapterLoading}
+          >
+            <Languages className="size-3" />
+            {showSource ? '번역' : '원문'}
+          </Button>
         </div>
-      </div>
+
+        <div className="mt-2 flex items-center gap-2">
+          <Select value={selectedChapterId} onValueChange={setSelectedChapterId}>
+            <SelectTrigger size="sm" className="w-full min-w-0 bg-background text-xs md:text-sm">
+              <SelectValue placeholder="챕터 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              {chapters.map(chapter => (
+                <SelectItem key={chapter.chapter_id} value={chapter.chapter_id}>
+                  {chapter.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="shrink-0 text-[10px] text-muted-foreground md:text-xs">
+            {showSource ? '원문' : '번역'}
+          </span>
+        </div>
+      </header>
 
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mt-2">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {!sourceAvailable && !chapterLoading && (
-        <Alert>
+      {sourceMissing && (
+        <Alert className="mt-2">
           <AlertDescription>원문 파일을 찾을 수 없습니다.</AlertDescription>
         </Alert>
       )}
 
-      {chapterLoading || !chapterContent ? (
-        <div className="rounded-2xl border bg-card p-8 text-center text-sm text-muted-foreground">
-          챕터를 불러오는 중...
-        </div>
-      ) : (
-        <div className="rounded-2xl border bg-card p-2 shadow-xs">
-          <IframePanel
-            html={chapterContent.translation_html}
-            hidden={showSource}
-            iframeRef={translationRef}
-          />
-          <IframePanel
-            html={chapterContent.source_html ?? '<!doctype html><html><body></body></html>'}
-            hidden={!showSource}
-            iframeRef={sourceRef}
-          />
-        </div>
-      )}
+      <section className="mt-2 min-h-0 flex-1 overflow-hidden rounded-xl border bg-card p-1 shadow-xs">
+        {chapterLoading || !chapterContent ? (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            챕터를 불러오는 중...
+          </div>
+        ) : (
+          <>
+            <IframePanel
+              html={chapterContent.translation_html}
+              hidden={showSource}
+              iframeRef={translationRef}
+              title="번역 보기"
+            />
+            <IframePanel
+              html={chapterContent.source_html ?? '<!doctype html><html><body></body></html>'}
+              hidden={!showSource}
+              iframeRef={sourceRef}
+              title="원문 보기"
+            />
+          </>
+        )}
+      </section>
     </div>
   )
 }
