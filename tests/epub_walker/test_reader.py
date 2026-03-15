@@ -73,6 +73,22 @@ class TestExtractChapterParagraphs:
             for paragraph in paragraphs
         )
 
+    def test_inline_elements_in_source_have_no_xmlns_declarations(self):
+        with ZipFile(SAMPLE_EPUB) as source_zf, ZipFile(TRANSLATED_EPUB) as translation_zf:
+            paragraphs = extract_chapter_paragraphs(
+                source_zf=source_zf,
+                translation_zf=translation_zf,
+                chapter_idx=2,
+                chapter_id="ch002",
+            )
+
+        inline_paragraphs = [p for p in paragraphs if "<strong" in p["source"]]
+        assert inline_paragraphs, "Expected at least one paragraph with <strong>"
+        for paragraph in inline_paragraphs:
+            assert 'xmlns=' not in paragraph["source"], (
+                f"Unexpected xmlns in inline HTML: {paragraph['source']}"
+            )
+
     def test_returns_empty_source_when_source_epub_is_missing(self):
         with ZipFile(TRANSLATED_EPUB) as translation_zf:
             paragraphs = extract_chapter_paragraphs(

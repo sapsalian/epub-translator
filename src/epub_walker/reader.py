@@ -4,6 +4,7 @@ import base64
 import mimetypes
 from pathlib import PurePosixPath
 import posixpath
+import re
 from zipfile import ZipFile
 
 from lxml import etree
@@ -11,6 +12,7 @@ from lxml import etree
 from .parser import _find_opf_path, get_spine_xhtml_paths_by_order
 
 _OPF_NS = {"opf": "http://www.idpf.org/2007/opf"}
+_XMLNS_DECL_RE = re.compile(r' xmlns(?::\w+)?="[^"]*"')
 _XHTML_NS = {"xhtml": "http://www.w3.org/1999/xhtml"}
 _NCX_NS = {"ncx": "http://www.daisy.org/z3986/2005/ncx/"}
 _XLINK_NS = "http://www.w3.org/1999/xlink"
@@ -160,7 +162,8 @@ def _inner_html(element: etree._Element) -> str:
     if element.text:
         parts.append(element.text)
     for child in element:
-        parts.append(etree.tostring(child, encoding="unicode"))
+        serialized = etree.tostring(child, encoding="unicode")
+        parts.append(_XMLNS_DECL_RE.sub("", serialized))
     return "".join(parts)
 
 
