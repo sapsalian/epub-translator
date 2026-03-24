@@ -9,9 +9,10 @@ from zipfile import ZipFile
 from lxml import etree
 
 from .parser import get_spine_xhtml_paths_by_order
+from src.matchers.implementations import TextEmergenceMatcher
+from src.pipeline.constants import UNTRANSLATABLE_TAGS
 
 _PARAGRAPH_ID_PATTERN = re.compile(r"^ch(?P<chapter>\d+)_p(?P<paragraph>\d+)$")
-_BLOCK_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li")
 
 
 def patch_epub_paragraphs(epub_path: Path, edits: dict[str, str]) -> None:
@@ -99,8 +100,22 @@ def _build_patched_payloads(
 
 
 def _iter_block_elements(root: etree._Element) -> list[etree._Element]:
-    xpath = " | ".join(f".//*[local-name()='{tag}']" for tag in _BLOCK_TAGS)
-    return list(root.xpath(xpath))
+    matcher = TextEmergenceMatcher()
+    result = []
+    for elem in root.iter():
+        if not isinstance(elem.tag, str):
+            continue
+        tag = etree.QName(elem).localname.lower()
+        if tag in UNTRANSLATABLE_TAGS:
+            continue
+        if any(
+            isinstance(a.tag, str) and etree.QName(a).localname.lower() in UNTRANSLATABLE_TAGS
+            for a in elem.iterancestors()
+        ):
+            continue
+        if matcher.match(elem):
+            result.append(elem)
+    return result
 
 
 def _replace_inner_html(element: etree._Element, inner_html: str) -> None:

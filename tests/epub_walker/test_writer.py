@@ -112,3 +112,14 @@ class TestPatchEpubParagraphs:
 
         with pytest.raises(ValueError, match="Invalid HTML fragment"):
             patch_epub_paragraphs(epub_path, {"ch000_p0": "<strong>broken"})
+
+    def test_patches_inline_edit_unit_strong(self, strong_para_epub):
+        patch_epub_paragraphs(strong_para_epub, {"ch000_p0": "updated"})
+        with ZipFile(strong_para_epub) as zf:
+            root = etree.fromstring(zf.read("OEBPS/chapter1.xhtml"))
+        p_elements = root.xpath(".//*[local-name()='p']")
+        assert len(p_elements) == 1
+        p = p_elements[0]
+        strong_children = [c for c in p if etree.QName(c).localname == "strong"]
+        assert len(strong_children) == 1, "Expected <p> to still contain <strong>"
+        assert strong_children[0].text == "updated"

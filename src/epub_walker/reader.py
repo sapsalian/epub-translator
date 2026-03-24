@@ -10,13 +10,14 @@ from zipfile import ZipFile
 from lxml import etree
 
 from .parser import _find_opf_path, get_spine_xhtml_paths_by_order
+from src.matchers.implementations import TextEmergenceMatcher
+from src.pipeline.constants import UNTRANSLATABLE_TAGS
 
 _OPF_NS = {"opf": "http://www.idpf.org/2007/opf"}
 _XMLNS_DECL_RE = re.compile(r' xmlns(?::\w+)?="[^"]*"')
 _XHTML_NS = {"xhtml": "http://www.w3.org/1999/xhtml"}
 _NCX_NS = {"ncx": "http://www.daisy.org/z3986/2005/ncx/"}
 _XLINK_NS = "http://www.w3.org/1999/xlink"
-_BLOCK_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li")
 
 
 def get_chapter_titles(zf: ZipFile) -> list[str]:
@@ -172,8 +173,22 @@ def _resolve_relative_path(base_path: PurePosixPath, href: str) -> PurePosixPath
 
 
 def _iter_block_elements(root: etree._Element) -> list[etree._Element]:
-    xpath = " | ".join(f".//*[local-name()='{tag}']" for tag in _BLOCK_TAGS)
-    return list(root.xpath(xpath))
+    matcher = TextEmergenceMatcher()
+    result = []
+    for elem in root.iter():
+        if not isinstance(elem.tag, str):
+            continue
+        tag = etree.QName(elem).localname.lower()
+        if tag in UNTRANSLATABLE_TAGS:
+            continue
+        if any(
+            isinstance(a.tag, str) and etree.QName(a).localname.lower() in UNTRANSLATABLE_TAGS
+            for a in elem.iterancestors()
+        ):
+            continue
+        if matcher.match(elem):
+            result.append(elem)
+    return result
 
 
 def _inline_image_assets(root: etree._Element, zf: ZipFile, chapter_path: PurePosixPath) -> None:

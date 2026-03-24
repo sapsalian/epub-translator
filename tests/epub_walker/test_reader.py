@@ -19,6 +19,13 @@ class TestGetChapterTitles:
         assert titles[2] == "Chapter 1: The Beginning of the End"
         assert titles[-1] == "Afterword"
 
+    def test_spine_paths_count_matches_titles_count(self):
+        from src.epub_walker.parser import get_spine_xhtml_paths_by_order
+        with ZipFile(SAMPLE_EPUB) as zf:
+            spine_paths = get_spine_xhtml_paths_by_order(zf)
+            titles = get_chapter_titles(zf)
+        assert len(spine_paths) == len(titles)
+
     def test_fallback_strips_multi_html_extensions(self, tmp_path):
         epub_path = tmp_path / "multi-ext.epub"
         with ZipFile(epub_path, "w") as zf:
@@ -68,8 +75,10 @@ class TestExtractChapterParagraphs:
         assert paragraphs[0]["id"] == "ch002_p0"
         assert paragraphs[0]["source"].startswith("Chapter 1: The Beginning of the End")
         assert paragraphs[0]["translation"].startswith("[Translated: Chapter 1: The Beginning of the End]")
+        # TextEmergenceMatcher: <p><strong>text</strong></p> → <strong> is the edit unit,
+        # so inner HTML is plain text without surrounding <strong> tag.
         assert any(
-            "The world ended in May." in paragraph["source"] and "<strong" in paragraph["source"]
+            "The world ended in May." in paragraph["source"]
             for paragraph in paragraphs
         )
 
@@ -82,8 +91,10 @@ class TestExtractChapterParagraphs:
                 chapter_id="ch002",
             )
 
-        inline_paragraphs = [p for p in paragraphs if "<strong" in p["source"]]
-        assert inline_paragraphs, "Expected at least one paragraph with <strong>"
+        # TextEmergenceMatcher: paragraphs with inline elements are those where
+        # the edit unit is a mixed-content block (direct text + inline children).
+        inline_paragraphs = [p for p in paragraphs if "<" in p["source"]]
+        assert inline_paragraphs, "Expected at least one paragraph with inline elements"
         for paragraph in inline_paragraphs:
             assert 'xmlns=' not in paragraph["source"], (
                 f"Unexpected xmlns in inline HTML: {paragraph['source']}"
@@ -158,3 +169,12 @@ class TestRenderChapterHtml:
             html = render_chapter_html(zf, chapter_idx=0, chapter_id="ch000")
 
         assert "xlink:href=\"data:image/jpeg;base64," in html
+
+    def test_strong_only_paragraph_becomes_edit_unit(self, strong_para_epub):
+        from lxml import etree as _etree
+        with ZipFile(strong_para_epub) as zf:
+            html = render_chapter_html(zf, chapter_idx=0, chapter_id="ch0")
+        root = _etree.fromstring(html.encode("utf-8"))
+        hits = root.xpath('.//*[@data-paragraph-id="ch0_p0"]')
+        assert len(hits) == 1
+        assert _etree.QName(hits[0]).localname == "strong"

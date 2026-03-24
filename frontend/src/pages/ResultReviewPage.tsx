@@ -42,6 +42,7 @@ interface StyleOption {
   tag: string
   styleText: string
   previewStyle: CSSProperties
+  label?: string
 }
 
 interface PaletteState {
@@ -58,20 +59,25 @@ const STYLE_WHITELIST = new Set([
   'font-style',
   'text-decoration',
   'font-family',
+  'letter-spacing',
 ])
 
-const DEFAULT_STYLE_OPTIONS: StyleOption[] = [
-  { key: 'default-strong', tag: 'strong', styleText: '', previewStyle: { fontWeight: 700 } },
-  { key: 'default-em', tag: 'em', styleText: '', previewStyle: { fontStyle: 'italic' } },
-  { key: 'default-u', tag: 'u', styleText: '', previewStyle: { textDecoration: 'underline' } },
-]
+const ALLOWED_PREVIEW_PROPS = new Set([
+  'fontFamily',
+  'color',
+  'backgroundColor',
+  'fontWeight',
+  'fontStyle',
+  'textDecoration',
+  'letterSpacing',
+])
 
 function IframePanel({ html, hidden, iframeRef, title, onLoad }: IframePanelProps) {
   return (
     <iframe
       ref={iframeRef}
       srcDoc={html}
-      sandbox="allow-same-origin"
+      sandbox="allow-same-origin allow-scripts"
       onLoad={onLoad}
       style={{
         width: '100%',
@@ -192,6 +198,16 @@ function styleTextToObject(styleText: string): CSSProperties {
   return styleObject as CSSProperties
 }
 
+function filterPreviewStyle(styleObject: Record<string, string>): CSSProperties {
+  const filtered: Record<string, string> = {}
+  for (const [key, value] of Object.entries(styleObject)) {
+    if (ALLOWED_PREVIEW_PROPS.has(key)) {
+      filtered[key] = value
+    }
+  }
+  return filtered as CSSProperties
+}
+
 function normalizeInlineTag(tagName: string): string {
   if (tagName === 'b') return 'strong'
   if (tagName === 'i') return 'em'
@@ -199,10 +215,10 @@ function normalizeInlineTag(tagName: string): string {
 }
 
 function extractStyleOptions(paragraph: HTMLElement): StyleOption[] {
-  const options: StyleOption[] = [...DEFAULT_STYLE_OPTIONS]
-  const signatures = new Set(DEFAULT_STYLE_OPTIONS.map(option => `${option.tag}|${option.styleText}`))
+  const options: StyleOption[] = []
+  const signatures = new Set<string>()
 
-  const inlineElements = paragraph.querySelectorAll<HTMLElement>('strong, b, em, i, u, span')
+  const inlineElements = paragraph.querySelectorAll<HTMLElement>('strong, b, em, i, u, span, a')
   for (const element of inlineElements) {
     const tag = normalizeInlineTag(element.tagName.toLowerCase())
     const styleText = filterAllowedStyle(element.getAttribute('style') ?? '')
@@ -212,17 +228,14 @@ function extractStyleOptions(paragraph: HTMLElement): StyleOption[] {
     if (signatures.has(signature)) continue
     signatures.add(signature)
 
-    const previewStyle: CSSProperties = {}
-    if (tag === 'strong') previewStyle.fontWeight = 700
-    if (tag === 'em') previewStyle.fontStyle = 'italic'
-    if (tag === 'u') previewStyle.textDecoration = 'underline'
-    Object.assign(previewStyle, styleTextToObject(styleText))
+    const previewStyle = filterPreviewStyle(styleTextToObject(styleText) as Record<string, string>)
 
     options.push({
       key: `inline-${options.length}`,
       tag,
       styleText,
       previewStyle,
+      label: tag === 'a' ? '링크' : undefined,
     })
 
     if (options.length >= 10) break
@@ -405,8 +418,7 @@ export function ResultReviewPage() {
       const isDirty = Object.prototype.hasOwnProperty.call(draftTranslations, paragraphId)
       const isActive = paragraphId === activeParagraphId
       paragraph.style.backgroundColor = isDirty ? 'rgba(250, 204, 21, 0.2)' : ''
-      paragraph.style.outline = isActive ? '1px solid rgba(59, 130, 246, 0.55)' : 'none'
-      paragraph.style.outlineOffset = isActive ? '2px' : '0'
+      paragraph.style.boxShadow = isActive ? 'inset 0 0 0 2px rgba(59, 130, 246, 0.55)' : ''
     })
   }, [activeParagraphId, chapterContent?.chapter_id, draftTranslations])
 
@@ -547,6 +559,11 @@ export function ResultReviewPage() {
       const paragraph = findParagraphElement(event.target as Node)
       if (!paragraph) return
       const paragraphId = paragraph.dataset.paragraphId ?? null
+      // Apply box-shadow immediately (sync) so the outline appears on first click
+      // without waiting for the React re-render cycle.
+      const allParagraphs = doc.querySelectorAll<HTMLElement>('[data-paragraph-id]')
+      allParagraphs.forEach(p => { p.style.boxShadow = '' })
+      paragraph.style.boxShadow = 'inset 0 0 0 2px rgba(59, 130, 246, 0.55)'
       activeParagraphIdRef.current = paragraphId
       setActiveParagraphId(paragraphId)
       requestAnimationFrame(() => {
@@ -794,19 +811,23 @@ export function ResultReviewPage() {
           className="fixed z-40 flex max-w-[92vw] items-center gap-1 rounded-lg border bg-background/95 p-1 shadow-md backdrop-blur"
           style={{ left: `${palette.left}px`, top: `${palette.top}px`, transform: 'translate(-50%, -100%)' }}
         >
-          <Button type="button" size="xs" variant="outline" onClick={() => handleApplyStyle(null)}>
+          <Button type="button" size="xs" variant="outline" onMouseDown={e => e.preventDefault()} onClick={() => handleApplyStyle(null)}>
             기본 Aa
           </Button>
+          {palette.options.length === 0 && (
+            <p className="text-xs text-muted-foreground px-1">이 문단에는 인라인 서식이 없습니다</p>
+          )}
           {palette.options.map(option => (
             <Button
               key={option.key}
               type="button"
               size="xs"
               variant="outline"
+              onMouseDown={e => e.preventDefault()}
               onClick={() => handleApplyStyle(option)}
               style={option.previewStyle}
             >
-              Aa
+              {option.label ?? 'Aa'}
             </Button>
           ))}
         </div>
