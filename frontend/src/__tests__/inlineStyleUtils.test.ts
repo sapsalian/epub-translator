@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import {
+  type StyleOption,
   filterAllowedStyle,
   styleTextToObject,
   normalizeInlineTag,
@@ -13,6 +14,7 @@ import {
   splitElementAtRange,
   extractStyleOptions,
   findParagraphElement,
+  applyInlineStyle,
 } from '../utils/inlineStyleUtils'
 
 // ---------------------------------------------------------------------------
@@ -469,6 +471,21 @@ describe('extractStyleOptions', () => {
     expect(options).toHaveLength(1)
   })
 
+  it('skips bare <a> without href (named anchor — no visual effect)', () => {
+    const p = para('<a id="anchor">역에</a>')
+    const options = extractStyleOptions(p)
+    // href 없는 <a>는 팔레트에 나타나면 안 됨:
+    // 클릭해도 href 없는 <a>로 감싸져 시각적 변화가 없음
+    expect(options).toHaveLength(0)
+  })
+
+  it('includes <a> with fragment href (#section)', () => {
+    const p = para('<a href="#section1">섹션 링크</a>')
+    const options = extractStyleOptions(p)
+    expect(options).toHaveLength(1)
+    expect(options[0].href).toBe('#section1')
+  })
+
   it('sets tagStack for multi-level nesting', () => {
     const p = para('<b><i>nested</i></b>')
     const options = extractStyleOptions(p)
@@ -491,5 +508,114 @@ describe('extractStyleOptions', () => {
     const p = para(html)
     const options = extractStyleOptions(p)
     expect(options.length).toBeLessThanOrEqual(10)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// applyInlineStyle (버그 재현 테스트: 링크 포함 전체 텍스트 선택 후 링크 적용)
+// ---------------------------------------------------------------------------
+
+describe('applyInlineStyle — link over cross-node selection', () => {
+  function makeOption(href: string): StyleOption {
+    return { key: 'k', tag: 'a', styleText: '', previewStyle: { color: '#2563eb', textDecoration: 'underline' }, href }
+  }
+
+  function setSelection(range: Range): void {
+    const sel = window.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+    window.getSelection()?.removeAllRanges()
+  })
+
+  // 케이스 1: <p>지<a>역에</a> 있다면, </p> → 전체 선택(paragraph level) → 링크 전체 적용
+  it('[p offset] 전체 선택 후 링크 적용: 모든 텍스트가 링크로 감싸짐', () => {
+    const p = document.createElement('p')
+    p.dataset.paragraphId = 'p1'
+    p.innerHTML = '지<a href="ch1">역에</a> 있다면, '
+    document.body.appendChild(p)
+
+    const range = document.createRange()
+    range.setStart(p, 0)     // <p> 자식 인덱스 0 앞
+    range.setEnd(p, 3)       // <p> 자식 인덱스 3 뒤 (3개 자식 모두 포함)
+    setSelection(range)
+
+    const changed = applyInlineStyle(document, makeOption('ch1'))
+    expect(changed).toBe(true)
+    // 전체 텍스트가 <a> 안에 있어야 함
+    expect(p.querySelector('a')?.textContent).toBe('지역에 있다면, ')
+    // 링크 밖에 텍스트가 없어야 함
+    expect(p.childNodes.length).toBe(1)  // 빈 텍스트 노드 제외하면 a 하나
+  })
+
+  // 케이스 2: startContainer = text "지" (텍스트 노드 기준 선택)
+  it('[text node] 텍스트 노드 기준 전체 선택 후 링크 적용', () => {
+    const p = document.createElement('p')
+    p.dataset.paragraphId = 'p1'
+    p.innerHTML = '지<a href="ch1">역에</a> 있다면, '
+    document.body.appendChild(p)
+
+    const firstText = p.firstChild as Text          // "지"
+    const lastText = p.lastChild as Text            // " 있다면, "
+
+    const range = document.createRange()
+    range.setStart(firstText, 0)
+    range.setEnd(lastText, lastText.length)
+    setSelection(range)
+
+    const changed = applyInlineStyle(document, makeOption('ch1'))
+    expect(changed).toBe(true)
+    expect(p.querySelector('a')?.textContent).toBe('지역에 있다면, ')
+  })
+
+  // 케이스 3: 링크 텍스트만 선택 → 동일 링크 적용 → no-op (same style)
+  it('[no-op] 이미 링크인 텍스트만 선택 후 동일 링크 적용 → 내용 유지', () => {
+    const p = document.createElement('p')
+    p.dataset.paragraphId = 'p1'
+    p.innerHTML = '지<a href="ch1">역에</a> 있다면, '
+    document.body.appendChild(p)
+
+    const aEl = p.querySelector('a')!
+    const innerText = aEl.firstChild as Text        // "역에"
+
+    const range = document.createRange()
+    range.setStart(innerText, 0)
+    range.setEnd(innerText, innerText.length)
+    setSelection(range)
+
+    applyInlineStyle(document, makeOption('ch1'))
+    // 텍스트 내용은 유지되어야 함 (no-op이거나 제자리 삽입)
+    expect(p.textContent).toBe('지역에 있다면, ')
+    // 링크는 여전히 있어야 함
+    expect(p.querySelector('a[href="ch1"]')).not.toBeNull()
+  })
+
+  // 케이스 4: 링크 내부에서 시작해서 외부까지 선택 (startContainer = text "역에" at 0)
+  it('[partial] 링크 내부에서 시작, 링크 외부까지 선택 → 선택 범위가 링크로 감싸짐', () => {
+    const p = document.createElement('p')
+    p.dataset.paragraphId = 'p1'
+    p.innerHTML = '지<a href="ch1">역에</a> 있다면, '
+    document.body.appendChild(p)
+
+    const aEl = p.querySelector('a')!
+    const innerText = aEl.firstChild as Text        // "역에"
+    const lastText = p.lastChild as Text            // " 있다면, "
+
+    const range = document.createRange()
+    range.setStart(innerText, 0)
+    range.setEnd(lastText, lastText.length)
+    setSelection(range)
+
+    const changed = applyInlineStyle(document, makeOption('ch1'))
+    expect(changed).toBe(true)
+    // 선택된 텍스트 "역에 있다면, "이 링크 안에 있어야 함
+    expect(p.textContent).toBe('지역에 있다면, ')
+    // "지"는 링크 밖
+    const aText = p.querySelector('a')?.textContent
+    expect(aText).toContain('역에')
+    expect(aText).toContain('있다면')
   })
 })

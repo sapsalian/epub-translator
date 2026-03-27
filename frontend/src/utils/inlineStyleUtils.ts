@@ -247,8 +247,12 @@ export function extractStyleOptions(paragraph: HTMLElement): StyleOption[] {
     if (signatures.has(signature)) continue
     signatures.add(signature)
 
-    const previewStyle = mergeTagStackPreviewStyle(tagStack)
     const outermost = tagStack[0]
+
+    // href 없는 <a>는 named anchor(점프 대상)이며 시각적 스타일이 없으므로 팔레트에서 제외
+    if (outermost.tag === 'a' && !outermost.href) continue
+
+    const previewStyle = mergeTagStackPreviewStyle(tagStack)
     const hasLink = tagStack.some(n => n.tag === 'a')
     const label = hasLink
       ? (textNode.textContent?.trim().slice(0, 5) || outermost.href?.slice(0, 5) || '링크')
