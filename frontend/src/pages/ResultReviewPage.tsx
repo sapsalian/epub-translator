@@ -291,6 +291,8 @@ export function ResultReviewPage() {
   const [loading, setLoading] = useState(true)
   const [chapterLoading, setChapterLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isEditMode, setIsEditMode] = useState(true)
+  const [discardKey, setDiscardKey] = useState(0)
   const [showSource, setShowSource] = useState(false)
   const [baseTranslations, setBaseTranslations] = useState<Record<string, string>>({})
   const [draftTranslations, setDraftTranslations] = useState<Record<string, string>>({})
@@ -301,10 +303,17 @@ export function ResultReviewPage() {
   const translationRef = useRef<HTMLIFrameElement>(null)
   const sourceRef = useRef<HTMLIFrameElement>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
+  const isEditModeRef = useRef(true)
   const showSourceRef = useRef(false)
   const baseTranslationsRef = useRef<Record<string, string>>({})
   const activeParagraphIdRef = useRef<string | null>(null)
   const saveRef = useRef<() => Promise<void>>(async () => {})
+
+  // xhtml_path basename → chapter_id (Phase 3 link navigation)
+  const chapterMap = useMemo(
+    () => new Map(chapters.map(c => [c.xhtml_path.split('/').pop() ?? '', c.chapter_id])),
+    [chapters],
+  )
 
   useEffect(() => {
     if (!jobId) return
@@ -378,6 +387,10 @@ export function ResultReviewPage() {
     setActiveParagraphId(null)
     setPalette(null)
   }, [chapterContent?.chapter_id])
+
+  useEffect(() => {
+    isEditModeRef.current = isEditMode
+  }, [isEditMode])
 
   useEffect(() => {
     showSourceRef.current = showSource
@@ -540,13 +553,7 @@ export function ResultReviewPage() {
 
   saveRef.current = handleSave
 
-  const handleTranslationLoad = () => {
-    cleanupRef.current?.()
-
-    const iframe = translationRef.current
-    const doc = iframe?.contentWindow?.document
-    if (!iframe || !doc) return
-
+  const setupEditorListeners = (doc: Document, iframe: HTMLIFrameElement): void => {
     const paragraphs = doc.querySelectorAll<HTMLElement>('[data-paragraph-id]')
     paragraphs.forEach(paragraph => {
       paragraph.setAttribute('contenteditable', 'true')
@@ -656,6 +663,55 @@ export function ResultReviewPage() {
     }
   }
 
+  // Phase 3에서 링크 내비게이션 구현 예정 (chapterMap은 내부 링크 챕터 이동에 사용)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const setupViewerListeners = (_doc: Document, _chapterMapArg?: Map<string, string>): void => {
+    cleanupRef.current = () => {}
+  }
+
+  const handleTranslationLoad = () => {
+    cleanupRef.current?.()
+
+    const iframe = translationRef.current
+    const doc = iframe?.contentWindow?.document
+    if (!iframe || !doc?.body) return  // mid-load guard
+
+    if (isEditModeRef.current) {
+      setupEditorListeners(doc, iframe)
+    } else {
+      setupViewerListeners(doc, chapterMap)
+    }
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const iframe = translationRef.current
+    const doc = iframe?.contentWindow?.document
+    if (!iframe || !doc?.body) return  // iframe not yet loaded — handleTranslationLoad will handle it
+    cleanupRef.current?.()
+    if (isEditMode) {
+      setupEditorListeners(doc, iframe)
+    } else {
+      setupViewerListeners(doc, chapterMap)
+    }
+  }, [isEditMode, chapterContent?.chapter_id])
+
+  const handleToggleEditMode = () => {
+    if (isEditMode && hasUnsavedChanges) {
+      if (!window.confirm('저장되지 않은 변경사항이 있습니다. 편집을 종료하면 변경사항이 사라집니다. 계속할까요?'))
+        return
+    }
+    if (isEditMode) {
+      // Editor → Viewer: sync ref first so handleTranslationLoad sees the new mode
+      isEditModeRef.current = false
+      setDiscardKey(k => k + 1)
+      setDraftTranslations({})
+      setActiveParagraphId(null)
+      setPalette(null)
+    }
+    setIsEditMode(prev => !prev)
+  }
+
   const confirmDiscardChanges = (): boolean => {
     if (!hasUnsavedChanges) return true
     return window.confirm('저장되지 않은 변경사항이 있습니다. 이동하면 내용이 사라집니다. 계속할까요?')
@@ -715,6 +771,7 @@ export function ResultReviewPage() {
   return (
     <div className="mx-auto flex h-[calc(100dvh-3rem)] max-w-7xl flex-col overflow-hidden px-2 pb-2 pt-2 md:h-dvh md:px-4 md:pb-4 md:pt-4">
       <header className="sticky top-0 z-20 rounded-xl border bg-card/95 p-2 shadow-xs backdrop-blur supports-[backdrop-filter]:bg-card/75 md:p-3">
+        {/* 행1: Back + filename + [편집/편집 중] + [저장 (n), 편집 모드만] */}
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon-xs" className="shrink-0">
             <Link to="/" aria-label="목록으로" onClick={handleBackToListClick}>
@@ -728,6 +785,46 @@ export function ResultReviewPage() {
 
           <Button
             type="button"
+            variant={isEditMode ? 'default' : 'outline'}
+            size="xs"
+            className="shrink-0"
+            aria-pressed={isEditMode}
+            onClick={handleToggleEditMode}
+          >
+            {isEditMode ? '편집 중' : '편집'}
+          </Button>
+
+          {isEditMode && (
+            <Button
+              type="button"
+              variant={hasUnsavedChanges ? 'default' : 'outline'}
+              size="xs"
+              className="shrink-0"
+              onClick={() => void handleSave()}
+              disabled={!hasUnsavedChanges || chapterLoading || saving}
+            >
+              <Save className="size-3" />
+              {saving ? '저장중' : `저장${hasUnsavedChanges ? ` (${pendingEdits.length})` : ''}`}
+            </Button>
+          )}
+        </div>
+
+        {/* 행2: 챕터 선택 + 원문/번역 토글 */}
+        <div className="mt-2 flex items-center gap-2">
+          <Select value={selectedChapterId} onValueChange={handleChapterChange}>
+            <SelectTrigger size="sm" className="w-full min-w-0 bg-background text-xs md:text-sm">
+              <SelectValue placeholder="챕터 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              {chapters.map((chapter, index) => (
+                <SelectItem key={chapter.chapter_id} value={chapter.chapter_id}>
+                  {formatChapterLabel(chapter, index)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
             variant={showSource ? 'default' : 'outline'}
             size="xs"
             className="shrink-0"
@@ -737,36 +834,6 @@ export function ResultReviewPage() {
             <Languages className="size-3" />
             {showSource ? '번역' : '원문'}
           </Button>
-
-          <Button
-            type="button"
-            variant={hasUnsavedChanges ? 'default' : 'outline'}
-            size="xs"
-            className="shrink-0"
-            onClick={() => void handleSave()}
-            disabled={!hasUnsavedChanges || chapterLoading || saving}
-          >
-            <Save className="size-3" />
-            {saving ? '저장중' : `저장${hasUnsavedChanges ? ` (${pendingEdits.length})` : ''}`}
-          </Button>
-        </div>
-
-        <div className="mt-2 flex items-center gap-2">
-          <Select value={selectedChapterId} onValueChange={handleChapterChange}>
-            <SelectTrigger size="sm" className="w-full min-w-0 bg-background text-xs md:text-sm">
-              <SelectValue placeholder="챕터 선택" />
-            </SelectTrigger>
-              <SelectContent>
-              {chapters.map((chapter, index) => (
-                <SelectItem key={chapter.chapter_id} value={chapter.chapter_id}>
-                  {formatChapterLabel(chapter, index)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="shrink-0 text-[10px] text-muted-foreground md:text-xs">
-            {showSource ? '원문' : '번역'}
-          </span>
         </div>
       </header>
 
@@ -790,6 +857,7 @@ export function ResultReviewPage() {
         ) : (
           <>
             <IframePanel
+              key={`${selectedChapterId}-${discardKey}`}
               html={chapterContent.translation_html}
               hidden={showSource}
               iframeRef={translationRef}
@@ -806,7 +874,7 @@ export function ResultReviewPage() {
         )}
       </section>
 
-      {palette && !showSource && (
+      {palette && !showSource && isEditMode && (
         <div
           className="fixed z-40 flex max-w-[92vw] items-center gap-1 rounded-lg border bg-background/95 p-1 shadow-md backdrop-blur"
           style={{ left: `${palette.left}px`, top: `${palette.top}px`, transform: 'translate(-50%, -100%)' }}
