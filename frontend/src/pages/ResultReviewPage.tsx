@@ -269,6 +269,99 @@ function buildNestedWrapper(
   return { outermost, innermost }
 }
 
+function hasSameStyle(a: Element, b: Element): boolean {
+  return (
+    a.tagName === b.tagName &&
+    (a.getAttribute('style') ?? '') === (b.getAttribute('style') ?? '') &&
+    (a.getAttribute('href') ?? '') === (b.getAttribute('href') ?? '')
+  )
+}
+
+function mergeSiblings(parent: Element): void {
+  const children = [...parent.childNodes]
+  let i = 0
+  while (i < children.length - 1) {
+    const a = children[i]
+    const b = children[i + 1]
+    if (a instanceof Element && b instanceof Element && hasSameStyle(a, b)) {
+      while (b.firstChild) a.appendChild(b.firstChild)
+      b.remove()
+      children.splice(i + 1, 1)
+      mergeSiblings(a)
+    } else {
+      i++
+    }
+  }
+}
+
+function mergeAdjacentSameStyle(paragraph: Element): void {
+  mergeSiblings(paragraph)
+  for (const child of [...paragraph.children]) {
+    mergeAdjacentSameStyle(child)
+  }
+}
+
+function flattenMatchingElements(fragment: DocumentFragment, option: StyleOption): void {
+  const matching = [...fragment.querySelectorAll(option.tag)]
+  for (const el of matching) {
+    const sameStyle =
+      filterAllowedStyle(el.getAttribute('style') ?? '') === option.styleText &&
+      (el.getAttribute('href') ?? undefined) === option.href
+    if (sameStyle) el.replaceWith(...el.childNodes)
+  }
+}
+
+function findImmediateStyledAncestor(
+  range: Range,
+  paragraph: HTMLElement,
+): HTMLElement | null {
+  const container = range.startContainer
+  if (container === paragraph) return null
+  if (container instanceof HTMLElement && container !== paragraph) return container
+  if (container.nodeType === Node.TEXT_NODE) {
+    const parent = (container as Text).parentElement
+    if (parent && parent !== paragraph) return parent
+  }
+  return null
+}
+
+function splitElementAtRange(element: HTMLElement, range: Range): Range {
+  const clone = element.cloneNode(false) as HTMLElement
+  const doc = element.ownerDocument
+
+  let splitPoint: ChildNode | null = null
+
+  if (range.startContainer === element) {
+    splitPoint = element.childNodes[range.startOffset] ?? null
+  } else if (
+    range.startContainer.nodeType === Node.TEXT_NODE &&
+    range.startContainer.parentNode === element
+  ) {
+    const textNode = range.startContainer as Text
+    if (range.startOffset === 0) {
+      splitPoint = textNode
+    } else if (range.startOffset >= textNode.length) {
+      splitPoint = textNode.nextSibling
+    } else {
+      splitPoint = textNode.splitText(range.startOffset)
+    }
+  }
+
+  let current: ChildNode | null = splitPoint
+  while (current) {
+    const next = current.nextSibling
+    clone.appendChild(current)
+    current = next
+  }
+
+  element.parentNode?.insertBefore(clone, element.nextSibling)
+
+  const newRange = doc.createRange()
+  newRange.setStartAfter(element)
+  newRange.setEndBefore(clone)
+  return newRange
+}
+
 function extractStyleOptions(paragraph: HTMLElement): StyleOption[] {
   const options: StyleOption[] = []
   const signatures = new Set<string>()
@@ -330,27 +423,51 @@ function applyInlineStyle(doc: Document, option: StyleOption): boolean {
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false
 
   const range = selection.getRangeAt(0)
+  const paragraph = findParagraphElement(range.commonAncestorContainer) as HTMLElement | null
+  if (!paragraph) return false
 
   if (option.tagStack && option.tagStack.length > 1) {
     const { outermost, innermost } = buildNestedWrapper(doc, option.tagStack)
     const fragment = range.extractContents()
     innermost.appendChild(fragment)
     range.insertNode(outermost)
+    mergeAdjacentSameStyle(paragraph)
     return true
   }
 
-  const wrapper = doc.createElement(option.tag)
-  if (option.styleText) wrapper.setAttribute('style', option.styleText)
-  if (option.href) wrapper.setAttribute('href', option.href)
+  const contentFragment = range.extractContents()
+  flattenMatchingElements(contentFragment, option)
 
-  try {
-    range.surroundContents(wrapper)
-  } catch {
-    const fragment = range.extractContents()
-    wrapper.appendChild(fragment)
+  const styledContainer = findImmediateStyledAncestor(range, paragraph)
+
+  if (styledContainer) {
+    const containerTag = normalizeInlineTag(styledContainer.tagName.toLowerCase())
+    const containerStyle = filterAllowedStyle(styledContainer.getAttribute('style') ?? '')
+    const containerHref = styledContainer.getAttribute('href') ?? undefined
+    const matches =
+      containerTag === option.tag &&
+      containerStyle === option.styleText &&
+      containerHref === option.href
+
+    if (matches) {
+      range.insertNode(contentFragment)
+    } else {
+      const insertRange = splitElementAtRange(styledContainer, range)
+      const wrapper = doc.createElement(option.tag)
+      if (option.styleText) wrapper.setAttribute('style', option.styleText)
+      if (option.href) wrapper.setAttribute('href', option.href)
+      wrapper.appendChild(contentFragment)
+      insertRange.insertNode(wrapper)
+    }
+  } else {
+    const wrapper = doc.createElement(option.tag)
+    if (option.styleText) wrapper.setAttribute('style', option.styleText)
+    if (option.href) wrapper.setAttribute('href', option.href)
+    wrapper.appendChild(contentFragment)
     range.insertNode(wrapper)
   }
 
+  mergeAdjacentSameStyle(paragraph)
   return true
 }
 
