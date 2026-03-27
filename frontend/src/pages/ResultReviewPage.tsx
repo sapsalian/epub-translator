@@ -37,6 +37,12 @@ interface IframePanelProps {
   onLoad?: () => void
 }
 
+interface StyleTagNode {
+  tag: string
+  style: string
+  href?: string
+}
+
 interface StyleOption {
   key: string
   tag: string
@@ -44,6 +50,7 @@ interface StyleOption {
   previewStyle: CSSProperties
   label?: string
   href?: string
+  tagStack?: StyleTagNode[]
 }
 
 interface PaletteState {
@@ -215,44 +222,84 @@ function normalizeInlineTag(tagName: string): string {
   return tagName
 }
 
+function computeTagStack(textNode: Text, stopAt: Element): StyleTagNode[] {
+  const stack: StyleTagNode[] = []
+  let current: Element | null = textNode.parentElement
+  while (current && current !== stopAt) {
+    const tag = current.tagName.toLowerCase()
+    const style = filterAllowedStyle(current.getAttribute('style') ?? '')
+    const href = tag === 'a' ? (current.getAttribute('href') ?? undefined) : undefined
+    stack.unshift({ tag, style, href })
+    current = current.parentElement
+  }
+  return stack
+}
+
+function mergeTagStackPreviewStyle(tagStack: StyleTagNode[]): CSSProperties {
+  const merged: Record<string, string> = {}
+  for (const node of tagStack) {
+    Object.assign(merged, styleTextToObject(node.style) as Record<string, string>)
+    if (node.tag === 'strong' || node.tag === 'b') merged.fontWeight = 'bold'
+    if (node.tag === 'em' || node.tag === 'i') merged.fontStyle = 'italic'
+    if (node.tag === 'u') merged.textDecoration = 'underline'
+    if (node.tag === 'a') {
+      if (!merged.textDecoration) merged.textDecoration = 'underline'
+      if (!merged.color) merged.color = '#2563eb'
+    }
+  }
+  return filterPreviewStyle(merged as Record<string, string>)
+}
+
+function buildNestedWrapper(
+  doc: Document,
+  tagStack: StyleTagNode[],
+): { outermost: Element; innermost: Element } {
+  const outermost = doc.createElement(tagStack[0].tag)
+  if (tagStack[0].style) outermost.setAttribute('style', tagStack[0].style)
+  if (tagStack[0].href) outermost.setAttribute('href', tagStack[0].href)
+
+  let innermost: Element = outermost
+  for (let i = 1; i < tagStack.length; i++) {
+    const child = doc.createElement(tagStack[i].tag)
+    if (tagStack[i].style) child.setAttribute('style', tagStack[i].style)
+    if (tagStack[i].href) child.setAttribute('href', tagStack[i].href!)
+    innermost.appendChild(child)
+    innermost = child
+  }
+  return { outermost, innermost }
+}
+
 function extractStyleOptions(paragraph: HTMLElement): StyleOption[] {
   const options: StyleOption[] = []
   const signatures = new Set<string>()
 
-  const inlineElements = paragraph.querySelectorAll<HTMLElement>('strong, b, em, i, u, span, a')
-  for (const element of inlineElements) {
-    const tag = normalizeInlineTag(element.tagName.toLowerCase())
-    const styleText = filterAllowedStyle(element.getAttribute('style') ?? '')
-    if (tag === 'span' && !styleText) continue
+  const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
+  let textNode: Text | null
+  while ((textNode = walker.nextNode() as Text | null)) {
+    if (!textNode.textContent?.trim()) continue
 
-    const href = tag === 'a' ? (element.getAttribute('href') ?? null) : null
-    if (tag === 'a' && !href) continue
+    const tagStack = computeTagStack(textNode, paragraph)
+    if (tagStack.length === 0) continue
 
-    const signature = tag === 'a' ? `a|${href}|${styleText}` : `${tag}|${styleText}`
+    const signature = tagStack.map(n => `${n.tag}|${n.style}|${n.href ?? ''}`).join('>')
     if (signatures.has(signature)) continue
     signatures.add(signature)
 
-    const rawStyleObj = styleTextToObject(styleText) as Record<string, string>
-    const basePreview = filterPreviewStyle(rawStyleObj)
-    const previewStyle: CSSProperties =
-      tag === 'a'
-        ? Object.keys(basePreview).length > 0
-          ? basePreview
-          : { textDecoration: 'underline', color: '#2563eb' }
-        : basePreview
-
-    const label =
-      tag === 'a'
-        ? (element.textContent?.trim().slice(0, 5) || href?.slice(0, 5) || '링크')
-        : undefined
+    const previewStyle = mergeTagStackPreviewStyle(tagStack)
+    const outermost = tagStack[0]
+    const hasLink = tagStack.some(n => n.tag === 'a')
+    const label = hasLink
+      ? (textNode.textContent?.trim().slice(0, 5) || outermost.href?.slice(0, 5) || '링크')
+      : undefined
 
     options.push({
       key: `inline-${options.length}`,
-      tag,
-      styleText,
+      tag: normalizeInlineTag(outermost.tag),
+      styleText: outermost.style,
       previewStyle,
       label,
-      href: href ?? undefined,
+      href: outermost.href,
+      tagStack: tagStack.length > 1 ? tagStack : undefined,
     })
 
     if (options.length >= 10) break
@@ -283,6 +330,15 @@ function applyInlineStyle(doc: Document, option: StyleOption): boolean {
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false
 
   const range = selection.getRangeAt(0)
+
+  if (option.tagStack && option.tagStack.length > 1) {
+    const { outermost, innermost } = buildNestedWrapper(doc, option.tagStack)
+    const fragment = range.extractContents()
+    innermost.appendChild(fragment)
+    range.insertNode(outermost)
+    return true
+  }
+
   const wrapper = doc.createElement(option.tag)
   if (option.styleText) wrapper.setAttribute('style', option.styleText)
   if (option.href) wrapper.setAttribute('href', option.href)
