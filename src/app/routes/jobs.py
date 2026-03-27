@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from src.epub_walker.parser import get_spine_xhtml_paths_by_order
 from src.epub_walker.reader import extract_chapter_paragraphs, get_chapter_titles, render_chapter_html
 from src.epub_walker.writer import patch_epub_paragraphs
 from src.pipeline.persistence import CheckpointManager, FilePersistenceBackend
@@ -171,10 +172,11 @@ async def get_job_chapters(request: Request, job_id: str):
     output_path = Path(job.output_path)
     with ZipFile(output_path) as translation_zf:
         titles = get_chapter_titles(translation_zf)
+        spine_paths = get_spine_xhtml_paths_by_order(translation_zf)
 
     return [
-        {"chapter_id": f"ch{index:03d}", "title": title}
-        for index, title in enumerate(titles)
+        {"chapter_id": f"ch{index:03d}", "title": title, "xhtml_path": str(path)}
+        for index, (title, path) in enumerate(zip(titles, spine_paths))
     ]
 
 

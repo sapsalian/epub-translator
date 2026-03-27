@@ -306,7 +306,9 @@ class TestJobsRoute:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data[0] == {"chapter_id": "ch000", "title": "Preface"}
+        assert data[0]["chapter_id"] == "ch000"
+        assert data[0]["title"] == "Preface"
+        assert "xhtml_path" in data[0]
         assert data[2]["title"] == "Chapter 1: The Beginning of the End"
 
     @pytest.mark.asyncio

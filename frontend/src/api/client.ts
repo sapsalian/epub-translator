@@ -41,6 +41,7 @@ export interface GlossaryTerm {
 export interface JobChapter {
   chapter_id: string
   title: string
+  xhtml_path: string
 }
 
 export interface ChapterParagraph {
