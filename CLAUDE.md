@@ -55,6 +55,18 @@
   - `src/epub_walker/writer.py` 추가 (`patch_epub_paragraphs`)
   - `ResultReviewPage`에서 translation iframe 내부 contenteditable 편집, 스타일 팔레트, 저장 버튼, 이탈 경고 지원
 
+## Recent Updates (2026-03-27)
+
+- 결과 뷰어 Phase 3 (viewer links + link palette + empty paragraph delete):
+  - `ResultReviewPage` viewer 모드 링크 클릭 처리 (`setupViewerListeners`):
+    - fragment-only(`#...`) → 같은 챕터 내 스크롤
+    - 내부 챕터 링크 → `setSelectedChapterId` + `pendingFragmentRef`로 챕터 이동 후 fragment 스크롤
+    - 외부 링크 → `window.open(_blank, noopener,noreferrer)`
+  - `extractStyleOptions`에서 `<a href>` 링크 스타일 팔레트 추출 (href 없는 `<a>` skip)
+  - `applyInlineStyle`에서 `<a>` 태그 적용 시 `href` attribute 유지
+  - 빈 문단 Backspace 삭제: confirm → `display:none` + `draftTranslations[id]=''`
+  - `StyleOption` 인터페이스에 `href?: string` 추가
+
 ## Python Environment
 
 ```bash

@@ -43,6 +43,7 @@ interface StyleOption {
   styleText: string
   previewStyle: CSSProperties
   label?: string
+  href?: string
 }
 
 interface PaletteState {
@@ -224,18 +225,34 @@ function extractStyleOptions(paragraph: HTMLElement): StyleOption[] {
     const styleText = filterAllowedStyle(element.getAttribute('style') ?? '')
     if (tag === 'span' && !styleText) continue
 
-    const signature = `${tag}|${styleText}`
+    const href = tag === 'a' ? (element.getAttribute('href') ?? null) : null
+    if (tag === 'a' && !href) continue
+
+    const signature = tag === 'a' ? `a|${href}|${styleText}` : `${tag}|${styleText}`
     if (signatures.has(signature)) continue
     signatures.add(signature)
 
-    const previewStyle = filterPreviewStyle(styleTextToObject(styleText) as Record<string, string>)
+    const rawStyleObj = styleTextToObject(styleText) as Record<string, string>
+    const basePreview = filterPreviewStyle(rawStyleObj)
+    const previewStyle: CSSProperties =
+      tag === 'a'
+        ? Object.keys(basePreview).length > 0
+          ? basePreview
+          : { textDecoration: 'underline', color: '#2563eb' }
+        : basePreview
+
+    const label =
+      tag === 'a'
+        ? (element.textContent?.trim().slice(0, 5) || href?.slice(0, 5) || '링크')
+        : undefined
 
     options.push({
       key: `inline-${options.length}`,
       tag,
       styleText,
       previewStyle,
-      label: tag === 'a' ? '링크' : undefined,
+      label,
+      href: href ?? undefined,
     })
 
     if (options.length >= 10) break
@@ -268,6 +285,7 @@ function applyInlineStyle(doc: Document, option: StyleOption): boolean {
   const range = selection.getRangeAt(0)
   const wrapper = doc.createElement(option.tag)
   if (option.styleText) wrapper.setAttribute('style', option.styleText)
+  if (option.href) wrapper.setAttribute('href', option.href)
 
   try {
     range.surroundContents(wrapper)
@@ -304,6 +322,7 @@ export function ResultReviewPage() {
   const sourceRef = useRef<HTMLIFrameElement>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
   const isEditModeRef = useRef(true)
+  const pendingFragmentRef = useRef<string | null>(null)
   const showSourceRef = useRef(false)
   const baseTranslationsRef = useRef<Record<string, string>>({})
   const activeParagraphIdRef = useRef<string | null>(null)
@@ -605,6 +624,21 @@ export function ResultReviewPage() {
         event.preventDefault()
         insertLineBreak(doc)
         syncDraftFromParagraph(paragraph)
+        return
+      }
+
+      if (event.key === 'Backspace') {
+        const isEmpty = paragraph.innerHTML.replace(/<br\s*\/?>/gi, '').trim() === ''
+        if (isEmpty) {
+          event.preventDefault()
+          if (!window.confirm('삭제할까요?')) return
+          const paragraphId = paragraph.dataset.paragraphId
+          if (!paragraphId) return
+          paragraph.style.display = 'none'
+          setDraftTranslations(prev => ({ ...prev, [paragraphId]: '' }))
+          setActiveParagraphId(null)
+          setPalette(null)
+        }
       }
     }
 
@@ -663,10 +697,42 @@ export function ResultReviewPage() {
     }
   }
 
-  // Phase 3에서 링크 내비게이션 구현 예정 (chapterMap은 내부 링크 챕터 이동에 사용)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const setupViewerListeners = (_doc: Document, _chapterMapArg?: Map<string, string>): void => {
-    cleanupRef.current = () => {}
+  const setupViewerListeners = (doc: Document, chapterMapArg: Map<string, string>): void => {
+    const handleClick = (event: MouseEvent) => {
+      const a = (event.target as Element).closest?.('a[href]') as HTMLAnchorElement | null
+      if (!a) return
+      event.preventDefault()
+
+      const href = a.getAttribute('href') ?? ''
+      if (!href) return
+
+      if (href.startsWith('#')) {
+        const fragment = href.slice(1)
+        const target =
+          doc.getElementById(fragment) ??
+          doc.querySelector(`[name="${CSS.escape(fragment)}"]`)
+        target?.scrollIntoView({ block: 'start', behavior: 'auto' })
+        return
+      }
+
+      const hashIdx = href.indexOf('#')
+      const filePart = hashIdx >= 0 ? href.slice(0, hashIdx) : href
+      const fragment = hashIdx >= 0 ? href.slice(hashIdx + 1) : null
+      const basename = filePart.split('/').pop() ?? filePart
+
+      const chapterId = chapterMapArg.get(basename)
+      if (chapterId) {
+        if (fragment) pendingFragmentRef.current = fragment
+        setSelectedChapterId(chapterId)
+      } else {
+        window.open(href, '_blank', 'noopener,noreferrer')
+      }
+    }
+
+    doc.addEventListener('click', handleClick)
+    cleanupRef.current = () => {
+      doc.removeEventListener('click', handleClick)
+    }
   }
 
   const handleTranslationLoad = () => {
@@ -681,9 +747,17 @@ export function ResultReviewPage() {
     } else {
       setupViewerListeners(doc, chapterMap)
     }
+
+    const pendingFragment = pendingFragmentRef.current
+    if (pendingFragment) {
+      pendingFragmentRef.current = null
+      const target =
+        doc.getElementById(pendingFragment) ??
+        doc.querySelector(`[name="${CSS.escape(pendingFragment)}"]`)
+      target?.scrollIntoView({ block: 'start', behavior: 'auto' })
+    }
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const iframe = translationRef.current
     const doc = iframe?.contentWindow?.document
@@ -694,7 +768,8 @@ export function ResultReviewPage() {
     } else {
       setupViewerListeners(doc, chapterMap)
     }
-  }, [isEditMode, chapterContent?.chapter_id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, chapterContent?.chapter_id, chapterMap])
 
   const handleToggleEditMode = () => {
     if (isEditMode && hasUnsavedChanges) {
