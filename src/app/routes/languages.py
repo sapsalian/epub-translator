@@ -15,6 +15,7 @@ _LANGUAGE_LABELS: dict[str, str] = {
     "es": "Spanish",
     "fr": "French",
     "de": "German",
+    "da": "Danish",
 }
 
 

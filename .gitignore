@@ -9,3 +9,6 @@ __pycache__/
 AGENTS.md
 GEMINI.md
 CLAUDE.md
+
+nohup.out
+.DS_Store

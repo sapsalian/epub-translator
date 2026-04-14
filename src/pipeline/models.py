@@ -30,6 +30,7 @@ class Language(str, Enum):
     SPANISH = "es"
     FRENCH = "fr"
     GERMAN = "de"
+    DANISH = "da"
 
 
 # =============================================================================
